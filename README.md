@@ -25,6 +25,7 @@ npm run build
 Runs RTP/state-machine unit tests and produces `examples/tug-public/dist/` for static hosting.
 
 **Live demo:** https://tug-static.vercel.app  
+**Source:** https://github.com/Fraeiy/tug  
 **Submission fields:** `sdk/casino-sdk/examples/tug-public/SUBMISSION.md`
 
 With the local stack running, exercise every on-chain flow:

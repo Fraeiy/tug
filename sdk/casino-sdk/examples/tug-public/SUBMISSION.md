@@ -5,7 +5,7 @@
 | **Title** | Tug |
 | **URL** | https://tug-static.vercel.app |
 | **Declared RTP** | 0.95 (95%) |
-| **Source link** | `C:\Users\USER\tug-casino` (push to GitHub and paste the repo URL) |
+| **Source link** | https://github.com/Fraeiy/tug |
 | **Pitch** | Tug is a hold-or-bank tension game: each survived VRF hold climbs a fixed multiplier ladder (80% survive chance), then you choose to bank or risk another tug. Fail snaps the rope and loses the wager. Cap at 5 holds with auto-bank. Chained binary checks with a stopping time — not dice, crash, or plinko. |
 
 ## Eligibility self-check
