@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vercel/
+*.log
+.DS_Store
+Thumbs.db
+casino-sdk.zip
+tug-static/
+sdk/casino-sdk/simulator/local-node/deployed.json
+sdk/casino-sdk/**/local-node/deployed.json
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.turbo/
+coverage/

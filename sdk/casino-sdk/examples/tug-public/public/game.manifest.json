@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "gameId": "TugGame",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "locales": {
+    "en": {
+      "name": "Tug",
+      "description": "Hold-or-bank tension game: survive VRF holds to climb the multiplier, then bank — or risk another tug. Fail snaps the rope and loses the wager. Max 5 holds; hold 5 auto-banks."
+    }
+  },
+  "presentation": {
+    "mode": "full-iframe",
+    "hostPanels": {
+      "openSession": false,
+      "history": false,
+      "status": false
+    }
+  },
+  "capabilities": {
+    "openSession": true,
+    "submitAction": true,
+    "forfeitExpiredSession": true,
+    "cancelStuckRandomness": true,
+    "resize": true
+  },
+  "assets": {
+    "iconUrl": "/icon.svg",
+    "coverUrl": "/cover.svg"
+  },
+  "jam": {
+    "category": "originals",
+    "novelty": true,
+    "rtp": 0.95,
+    "rtpBand": [0.93, 0.98],
+    "wagerMin": "0.01",
+    "wagerMax": "1000",
+    "maxHolds": 5,
+    "entryPoint": "/",
+    "widgetRequired": true,
+    "standalone": true,
+    "mechanic": "chained-binary-check-with-stopping-time"
+  }
+}

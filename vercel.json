@@ -1,0 +1,15 @@
+{
+  "framework": "vite",
+  "installCommand": "npm install --prefix sdk/casino-sdk",
+  "buildCommand": "npm run build:tug --prefix sdk/casino-sdk",
+  "outputDirectory": "sdk/casino-sdk/examples/tug-public/dist",
+  "headers": [
+    {
+      "source": "/game.manifest.json",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=60" }
+      ]
+    }
+  ]
+}
