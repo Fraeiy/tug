@@ -9,9 +9,17 @@ type Props = {
   pending?: boolean;
   currentMult?: string;
   potentialLabel?: string;
+  multPulse?: boolean;
 };
 
-export function RopeStage({ holds, visual, pending, currentMult, potentialLabel }: Props) {
+export function RopeStage({
+  holds,
+  visual,
+  pending,
+  currentMult,
+  potentialLabel,
+  multPulse,
+}: Props) {
   return (
     <section
       className={`stage visual-${visual}${pending ? ' is-pending' : ''}`}
@@ -55,7 +63,7 @@ export function RopeStage({ holds, visual, pending, currentMult, potentialLabel 
       <div className="stage-readout">
         <div className="readout-main">
           <span className="label">Current</span>
-          <strong className="mult">
+          <strong className={`mult${multPulse ? ' pulse' : ''}`}>
             {holds > 0 ? (currentMult ?? formatMultiplier(holds)) : '1.00×'}
           </strong>
         </div>

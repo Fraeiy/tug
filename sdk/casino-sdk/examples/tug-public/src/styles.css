@@ -66,45 +66,48 @@ input {
   margin: 0 auto;
 }
 
-/* Floating balance — sticky/fixed so it stays on screen while scrolling */
-.balance-float {
-  display: none;
-  align-items: center;
-  gap: 10px;
-  z-index: 80;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(18, 16, 14, 0.88);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+.logo-group {
+  flex-shrink: 0;
+  min-width: 0;
 }
 
-.balance-float-label {
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
+.brand-text {
+  min-width: 0;
+}
+
+.balance-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 20px;
+  flex-shrink: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line-strong);
+}
+
+.balance-pill-label {
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-mute);
+  flex-shrink: 0;
 }
 
-.balance-float-value {
-  font-variant-numeric: tabular-nums;
-  font-size: 0.95rem;
+.balance-pill .amount {
+  font-size: 14px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--gold);
+  font-variant-numeric: tabular-nums;
 }
 
-.pill.compact {
-  padding: 4px 8px;
-  font-size: 0.7rem;
-}
-
-.topbar-meta-desktop {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+.demo-badge {
+  flex-shrink: 0;
 }
 
 .shell.is-shake {
@@ -170,7 +173,13 @@ input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  padding: 4px 0;
+  flex-wrap: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: linear-gradient(180deg, var(--bg) 70%, transparent);
 }
 
 .brand {
@@ -193,9 +202,12 @@ input {
 
 .topbar-meta {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .pill {
@@ -417,7 +429,7 @@ input {
 }
 
 .readout-main .mult {
-  display: block;
+  display: inline-block;
   margin-top: 2px;
   font-family: var(--font-display);
   font-size: clamp(2.4rem, 6vw, 3.4rem);
@@ -426,6 +438,23 @@ input {
   font-variant-numeric: tabular-nums;
   color: var(--gold);
   text-shadow: 0 2px 20px rgba(226, 181, 106, 0.2);
+  transform-origin: center;
+}
+
+.readout-main .mult.pulse {
+  animation: multPulse 0.2s ease-out;
+}
+
+@keyframes multPulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .potential {
@@ -554,7 +583,7 @@ input {
   appearance: none;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 8px 0;
   cursor: pointer;
   color: var(--ink-mute);
@@ -566,6 +595,7 @@ input {
   color: #1a1410;
   background: var(--gold);
   border-color: transparent;
+  border-radius: 12px;
 }
 
 .presets button:disabled {
@@ -776,8 +806,9 @@ input {
   grid-template-columns: 28px 1fr auto;
   gap: 8px;
   align-items: center;
-  padding: 6px 4px;
+  padding: 6px 8px;
   border-radius: 10px;
+  border: 1px solid transparent;
 }
 
 .ladder li.done {
@@ -785,7 +816,10 @@ input {
 }
 
 .ladder li.on {
-  background: rgba(226, 181, 106, 0.14);
+  background: rgba(226, 181, 106, 0.16);
+  border: 1px solid var(--gold);
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(226, 181, 106, 0.2);
 }
 
 .ladder .n {
@@ -852,6 +886,9 @@ input {
   .shell.is-shake {
     animation: none !important;
   }
+  .readout-main .mult.pulse {
+    animation: none;
+  }
 }
 
 /* ========== Mobile: one-screen play — rope + stake, no scroll chase ========== */
@@ -876,36 +913,52 @@ input {
     padding-top: calc(8px + env(safe-area-inset-top, 0px));
   }
 
-  /* Fixed floating balance — always visible */
-  .balance-float {
-    display: flex;
-    position: fixed;
-    top: calc(10px + env(safe-area-inset-top, 0px));
-    right: 10px;
-    left: auto;
-  }
-
   .topbar {
-    padding-right: 140px; /* room for floating balance */
     flex-shrink: 0;
+    gap: 8px;
+    padding: 6px 2px 8px;
   }
 
-  .topbar-meta-desktop {
+  .brand h1 {
+    font-size: 1.25rem;
+  }
+
+  .eyebrow {
     display: none;
+  }
+
+  .balance-pill {
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+
+  .balance-pill .amount {
+    font-size: 12px;
+    max-width: 42vw;
+  }
+
+  .demo-badge {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+
+  @media (max-width: 400px) {
+    .balance-pill {
+      font-size: 11px;
+      padding: 5px 8px;
+    }
+    .balance-pill .amount {
+      font-size: 12px;
+    }
+    .balance-pill-label {
+      display: none;
+    }
   }
 
   .brand-mark {
     width: 36px;
     height: 36px;
     border-radius: 11px;
-  }
-
-  .brand h1 {
-    font-size: 1.35rem;
-  }
-
-  .eyebrow {
-    font-size: 0.62rem;
   }
 
   .layout {
@@ -1091,9 +1144,4 @@ input {
   }
 }
 
-/* Desktop: floating balance unused — topbar shows it */
-@media (min-width: 921px) {
-  .balance-float {
-    display: none !important;
-  }
-}
+

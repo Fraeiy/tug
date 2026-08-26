@@ -37,8 +37,10 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(false);
+  const [multPulse, setMultPulse] = useState(false);
   const heardRef = useRef<string>('');
   const creakRef = useRef<number | null>(null);
+  const prevHoldsRef = useRef(0);
 
   const decimals = snapshot?.token.decimals ?? 18;
   const symbol = snapshot?.token.symbol ?? 'chUSD';
@@ -99,6 +101,19 @@ export function App() {
       if (creakRef.current) window.clearInterval(creakRef.current);
     };
   }, [status]);
+
+  // Pulse multiplier text when a hold lands.
+  useEffect(() => {
+    const h = state?.holdsSurvived ?? 0;
+    if (h > prevHoldsRef.current && status === 'active') {
+      setMultPulse(true);
+      const t = window.setTimeout(() => setMultPulse(false), 220);
+      prevHoldsRef.current = h;
+      return () => window.clearTimeout(t);
+    }
+    if (h === 0) prevHoldsRef.current = 0;
+    else prevHoldsRef.current = h;
+  }, [state?.holdsSurvived, status]);
 
   useEffect(() => {
     if (!state) return;
@@ -165,6 +180,7 @@ export function App() {
       }
 
       heardRef.current = '';
+      prevHoldsRef.current = 0;
       setState(null);
       setPayout(0n);
       setWager(parsed);
@@ -178,6 +194,8 @@ export function App() {
         randomnessRequestData: EMPTY_HEX,
       });
       setSessionKey(key);
+      // Brief beat so the round doesn't feel instant/flat after Start.
+      await new Promise(r => setTimeout(r, 80));
       setStatus('active');
     } catch (err) {
       setStatus('idle');
@@ -263,15 +281,8 @@ export function App() {
     <div
       className={`shell theme-${snapshot.ui.theme === 'light' ? 'light' : 'dark'}${shake ? ' is-shake' : ''}`}
     >
-      {/* Always-visible balance (fixed on mobile so it never scrolls away) */}
-      <div className="balance-float" role="status" aria-live="polite">
-        <span className="balance-float-label">Balance</span>
-        <strong className="balance-float-value">{balanceLabel}</strong>
-        {demoMode && <span className="pill demo compact">Demo</span>}
-      </div>
-
       <header className="topbar">
-        <div className="brand">
+        <div className="brand logo-group">
           <span className="brand-mark" aria-hidden>
             <svg viewBox="0 0 32 32" width="28" height="28">
               <path
@@ -283,14 +294,17 @@ export function App() {
               />
             </svg>
           </span>
-          <div>
+          <div className="brand-text">
             <p className="eyebrow">Original · Hold or bank</p>
             <h1>Tug</h1>
           </div>
         </div>
-        <div className="topbar-meta topbar-meta-desktop">
-          {demoMode && <span className="pill demo">Demo</span>}
-          <span className="pill balance">{balanceLabel}</span>
+        <div className="topbar-meta" role="status" aria-live="polite">
+          {demoMode && <span className="pill demo demo-badge">Demo</span>}
+          <div className="balance-pill">
+            <span className="balance-pill-label">Balance</span>
+            <strong className="amount">{balanceLabel}</strong>
+          </div>
         </div>
       </header>
 
@@ -301,6 +315,7 @@ export function App() {
           pending={status === 'resolving'}
           currentMult={holds > 0 ? currentMult : undefined}
           potentialLabel={potentialLabel}
+          multPulse={multPulse}
         />
 
         <aside className="console">

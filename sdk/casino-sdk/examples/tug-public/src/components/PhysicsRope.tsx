@@ -26,12 +26,14 @@ type Fiber = {
   len: number;
 };
 
-const SEGMENTS = 28;
-const ITERATIONS = 4;
+const SEGMENTS = 30;
+const ITERATIONS = 5;
+/** kg shown on the hanging weight per survived hold (1-based index into this). */
+export const HOLD_WEIGHTS = [1, 2.5, 5, 9, 15];
 
 /**
- * Live Verlet rope: elongates with each survived hold, thrashes while a hold
- * resolves, and physically tears into falling ends on snap.
+ * Live Verlet rope: twisted hemp look, per-hold weight stretch, thrash under
+ * load, and a physical mid-span snap with flying fibers.
  */
 export function PhysicsRope({ holds, visual, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,22 +57,38 @@ export function PhysicsRope({ holds, visual, className }: Props) {
     let fibers: Fiber[] = [];
     let time = 0;
     let lastVisual: RopeVisual = visualRef.current;
+    let lastHolds = holdsRef.current;
     let w = 0;
     let h = 0;
     let dpr = 1;
+    let bounce = 0; // brief drop bounce when a new hold lands
 
-    const topPin = () => ({ x: w * 0.5, y: h * 0.08 });
-    const baseBottomY = () => h * 0.78;
+    const topPin = () => ({ x: w * 0.5, y: h * 0.07 });
+    const baseBottomY = () => h * 0.72;
 
     const stretchPull = () => {
       const v = visualRef.current;
       const n = holdsRef.current;
-      let pull = 0.02 + n * 0.038;
-      if (v === 'fraying') pull += 0.12 + Math.sin(time * 14) * 0.03;
-      if (v === 'tension') pull += 0.025;
-      if (v === 'banked') pull *= 0.5;
-      if (v === 'idle') pull = 0.012;
-      return Math.min(0.28, pull);
+      // ~12% lengthening per hold, matching the fix brief.
+      let pull = 0.015 + n * 0.055;
+      if (v === 'fraying') {
+        const intensity = 0.5 + n * 0.4;
+        pull += 0.1 + Math.sin(time * 16) * (0.02 * intensity);
+      }
+      if (v === 'tension') pull += 0.02;
+      if (v === 'banked') pull *= 0.45;
+      if (v === 'idle') pull = 0.01;
+      pull += bounce;
+      return Math.min(0.36, pull);
+    };
+
+    const swayIntensity = () => {
+      const v = visualRef.current;
+      const n = holdsRef.current;
+      if (v === 'fraying') return 2.5 + n * 0.6;
+      if (v === 'tension') return 0.5 + n * 0.35;
+      if (v === 'idle') return 0.25;
+      return 0.4;
     };
 
     const initRope = () => {
@@ -78,13 +96,14 @@ export function PhysicsRope({ holds, visual, className }: Props) {
       fibers = [];
       snapped = false;
       snapAt = -1;
+      bounce = 0;
       const top = topPin();
       const bottomY = baseBottomY();
       const span = bottomY - top.y;
       restLen = span / SEGMENTS;
       for (let i = 0; i <= SEGMENTS; i++) {
         const t = i / SEGMENTS;
-        const x = top.x + Math.sin(t * Math.PI) * 3;
+        const x = top.x + Math.sin(t * Math.PI) * 2;
         const y = top.y + span * t;
         points.push({ x, y, ox: x, oy: y, pinned: i === 0 });
       }
@@ -96,7 +115,7 @@ export function PhysicsRope({ holds, visual, className }: Props) {
       const rect = parent.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = Math.max(280, rect.width);
-      h = Math.max(420, rect.height);
+      h = Math.max(360, rect.height);
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
@@ -108,29 +127,30 @@ export function PhysicsRope({ holds, visual, className }: Props) {
     const triggerSnap = () => {
       if (snapped) return;
       snapped = true;
-      snapAt = Math.floor(SEGMENTS * 0.48);
+      snapAt = Math.floor(SEGMENTS * 0.46);
       const mid = points[snapAt];
-      for (let i = 0; i < 32; i++) {
+      for (let i = 0; i < 40; i++) {
         const ang = Math.random() * Math.PI * 2;
-        const spd = 1.8 + Math.random() * 5.5;
+        const spd = 2 + Math.random() * 6.5;
         fibers.push({
-          x: mid.x + (Math.random() - 0.5) * 12,
-          y: mid.y + (Math.random() - 0.5) * 10,
+          x: mid.x + (Math.random() - 0.5) * 14,
+          y: mid.y + (Math.random() - 0.5) * 12,
           vx: Math.cos(ang) * spd,
-          vy: Math.sin(ang) * spd - 2.5,
-          life: 0.75 + Math.random() * 0.9,
+          vy: Math.sin(ang) * spd - 3,
+          life: 0.8 + Math.random() * 1.0,
           rot: Math.random() * Math.PI,
-          vr: (Math.random() - 0.5) * 0.45,
-          len: 7 + Math.random() * 16,
+          vr: (Math.random() - 0.5) * 0.55,
+          len: 8 + Math.random() * 18,
         });
       }
+      // Opposite-direction kick so halves fall apart (top recoils up, bottom drops).
       for (let i = 1; i < points.length; i++) {
         if (i <= snapAt) {
-          points[i].ox = points[i].x - (1.5 + Math.random());
-          points[i].oy = points[i].y - 0.8;
+          points[i].ox = points[i].x + (Math.random() - 0.5) * 2;
+          points[i].oy = points[i].y + 2 + Math.random();
         } else {
-          points[i].ox = points[i].x + (1.5 + Math.random());
-          points[i].oy = points[i].y - 2;
+          points[i].ox = points[i].x + (Math.random() - 0.5) * 2;
+          points[i].oy = points[i].y - 3 - Math.random() * 2;
           points[i].pinned = false;
         }
       }
@@ -157,8 +177,14 @@ export function PhysicsRope({ holds, visual, className }: Props) {
     const step = () => {
       time += 0.016;
       const v = visualRef.current;
+      const n = holdsRef.current;
 
-      // Transitions
+      if (n > lastHolds) {
+        bounce = 0.06;
+      }
+      lastHolds = n;
+      if (bounce > 0) bounce *= 0.88;
+
       if (v === 'snap' && lastVisual !== 'snap') triggerSnap();
       if (v !== 'snap' && lastVisual === 'snap') initRope();
       if (v === 'idle' && (lastVisual === 'banked' || lastVisual === 'snap')) initRope();
@@ -175,18 +201,18 @@ export function PhysicsRope({ holds, visual, className }: Props) {
       if (!snapped) {
         const bottom = points[points.length - 1];
         const targetY = baseBottomY() + h * pull;
-        const sway =
-          Math.sin(time * (v === 'fraying' ? 18 : 2.6)) * (v === 'fraying' ? 11 : 2.2);
-        bottom.x += (top.x + sway - bottom.x) * 0.4;
-        bottom.y += (targetY - bottom.y) * 0.4;
+        const sway = Math.sin(time * (v === 'fraying' ? 18 : 2.8)) * swayIntensity();
+        bottom.x += (top.x + sway - bottom.x) * 0.42;
+        bottom.y += (targetY - bottom.y) * 0.42;
         bottom.ox = bottom.x;
         bottom.oy = bottom.y;
-        const taut = 1 - Math.min(0.24, pull * 0.95);
-        restLen = ((baseBottomY() - top.y) / SEGMENTS) * taut;
+        // Thin under load.
+        const thin = 1 - Math.min(0.2, n * 0.035);
+        restLen = ((baseBottomY() - top.y) / SEGMENTS) * (1 - Math.min(0.18, pull * 0.55)) * thin;
       }
 
-      const gravity = snapped ? 0.58 : v === 'fraying' ? 0.24 : 0.17;
-      const damp = snapped ? 0.993 : 0.986;
+      const gravity = snapped ? 0.62 : v === 'fraying' ? 0.26 : 0.17;
+      const damp = snapped ? 0.994 : 0.986;
 
       for (let i = 1; i < points.length; i++) {
         const p = points[i];
@@ -198,7 +224,7 @@ export function PhysicsRope({ holds, visual, className }: Props) {
         p.x += vx;
         p.y += vy + gravity;
         if (v === 'fraying' && !snapped) {
-          p.x += Math.sin(time * 32 + i * 0.65) * 0.65;
+          p.x += Math.sin(time * 34 + i * 0.6) * (0.4 + n * 0.12);
         }
       }
 
@@ -213,7 +239,7 @@ export function PhysicsRope({ holds, visual, className }: Props) {
 
       fibers = fibers.filter(f => f.life > 0);
       for (const f of fibers) {
-        f.vy += 0.36;
+        f.vy += 0.38;
         f.x += f.vx;
         f.y += f.vy;
         f.vx *= 0.98;
@@ -228,18 +254,20 @@ export function PhysicsRope({ holds, visual, className }: Props) {
       width: number,
       color: string,
       dash?: number[],
+      offset = 0,
     ) => {
       if (to - from < 1) return;
       ctx.beginPath();
-      ctx.moveTo(points[from].x, points[from].y);
+      const pStart = points[from];
+      ctx.moveTo(pStart.x + offset, pStart.y);
       for (let i = from + 1; i <= to; i++) {
         const p0 = points[i - 1];
         const p1 = points[i];
-        const mx = (p0.x + p1.x) / 2;
+        const mx = (p0.x + p1.x) / 2 + offset;
         const my = (p0.y + p1.y) / 2;
-        ctx.quadraticCurveTo(p0.x, p0.y, mx, my);
+        ctx.quadraticCurveTo(p0.x + offset, p0.y, mx, my);
       }
-      ctx.lineTo(points[to].x, points[to].y);
+      ctx.lineTo(points[to].x + offset, points[to].y);
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       ctx.lineCap = 'round';
@@ -253,54 +281,129 @@ export function PhysicsRope({ holds, visual, className }: Props) {
       const v = visualRef.current;
       if (v === 'banked') {
         return {
-          shadow: 'rgba(20, 30, 12, 0.45)',
-          core: '#6f8f4e',
-          mid: '#a4c57a',
-          hi: 'rgba(220, 245, 180, 0.55)',
+          shadow: 'rgba(20, 30, 12, 0.5)',
+          dark: '#5a7340',
+          mid: '#8fbf6a',
+          light: '#c5e09a',
+          hi: 'rgba(230, 255, 200, 0.55)',
           ring: '#9ec784',
+          tag: '#c5e09a',
         };
       }
       if (v === 'snap') {
         return {
-          shadow: 'rgba(40, 10, 5, 0.5)',
-          core: '#6a3224',
+          shadow: 'rgba(40, 10, 5, 0.55)',
+          dark: '#5a2a1c',
           mid: '#a85a40',
-          hi: 'rgba(255, 180, 150, 0.35)',
+          light: '#c47a58',
+          hi: 'rgba(255, 180, 150, 0.4)',
           ring: '#e08a72',
+          tag: '#e08a72',
         };
       }
       if (v === 'fraying') {
         return {
-          shadow: 'rgba(30, 15, 5, 0.5)',
-          core: '#7a4a22',
+          shadow: 'rgba(30, 15, 5, 0.55)',
+          dark: '#8f611f',
           mid: '#d4a45a',
-          hi: 'rgba(255, 220, 150, 0.55)',
+          light: '#b8843f',
+          hi: 'rgba(255, 220, 150, 0.6)',
           ring: '#e2b56a',
+          tag: '#e8c07a',
         };
       }
       return {
-        shadow: 'rgba(20, 12, 5, 0.5)',
-        core: '#6d4524',
-        mid: '#c49a5c',
-        hi: 'rgba(240, 210, 160, 0.45)',
+        shadow: 'rgba(20, 12, 5, 0.55)',
+        dark: '#8f611f',
+        mid: '#b8843f',
+        light: '#c49a5c',
+        hi: 'rgba(240, 210, 160, 0.5)',
         ring: '#e2b56a',
+        tag: '#e8c07a',
       };
     };
 
+    /** Twisted multi-strand hemp rope. */
     const drawHalf = (from: number, to: number, colors: ReturnType<typeof palette>, width: number) => {
       ctx.save();
-      ctx.translate(3, 4);
-      drawRopeStroke(from, to, width + 3, colors.shadow);
+      ctx.translate(2.5, 3.5);
+      drawRopeStroke(from, to, width + 4, colors.shadow);
       ctx.restore();
+
+      // Dark under-strand
+      drawRopeStroke(from, to, width * 1.05, colors.dark, undefined, -1.2);
+      // Mid hemp
       drawRopeStroke(from, to, width, colors.mid);
-      drawRopeStroke(from, to, width * 0.55, colors.core);
-      drawRopeStroke(from, to, Math.max(1.5, width * 0.22), colors.hi, [5, 9]);
+      // Light twist strand
+      drawRopeStroke(from, to, width * 0.55, colors.light, undefined, 1.1);
+      // Helical highlight dashes
+      drawRopeStroke(from, to, Math.max(1.4, width * 0.2), colors.hi, [4, 7], 0.4);
+
+      // Frayed hairlines past hold 2
+      if (holdsRef.current >= 2 && !snapped && visualRef.current !== 'idle') {
+        ctx.globalAlpha = 0.35 + holdsRef.current * 0.08;
+        drawRopeStroke(from, to, 1.2, colors.light, [2, 14], -width * 0.55);
+        drawRopeStroke(from, to, 1.0, colors.dark, [3, 18], width * 0.5);
+        ctx.globalAlpha = 1;
+      }
+    };
+
+    const drawWeight = (bot: Point, colors: ReturnType<typeof palette>) => {
+      const n = holdsRef.current;
+      const kg = n > 0 ? (HOLD_WEIGHTS[n - 1] ?? HOLD_WEIGHTS[HOLD_WEIGHTS.length - 1]) : 0;
+      const scale = 1 + Math.max(0, n - 1) * 0.15;
+      const cx = bot.x;
+      const cy = bot.y + 14;
+
+      // Iron weight body
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.beginPath();
+      ctx.moveTo(-16, -4);
+      ctx.lineTo(16, -4);
+      ctx.lineTo(13, 16);
+      ctx.lineTo(-13, 16);
+      ctx.closePath();
+      ctx.fillStyle = '#1a1410';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = colors.ring;
+      ctx.stroke();
+      // Hook ring
+      ctx.beginPath();
+      ctx.arc(0, -10, 7, 0, Math.PI * 2);
+      ctx.strokeStyle = colors.ring;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+
+      // kg tag
+      const label = n > 0 ? `${kg}kg` : 'READY';
+      ctx.font = '700 11px "DM Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(label).width;
+      const tagY = cy + 22 * scale;
+      const padX = 8;
+      const tagW = tw + padX * 2;
+      const tagH = 18;
+      ctx.beginPath();
+      roundRectPath(ctx, cx - tagW / 2, tagY - tagH / 2, tagW, tagH, 9);
+      ctx.fillStyle = '#1a1410';
+      ctx.fill();
+      ctx.strokeStyle = '#b8843f';
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+      ctx.fillStyle = colors.tag;
+      ctx.fillText(label, cx, tagY + 0.5);
     };
 
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
       const colors = palette();
-      const tautWidth = snapped ? 9 : 11.5 - Math.min(3.2, holdsRef.current * 0.4);
+      const n = holdsRef.current;
+      const tautWidth = snapped ? 8.5 : 12 - Math.min(3.5, n * 0.45);
 
       if (snapped && snapAt > 0) {
         drawHalf(0, snapAt, colors, tautWidth);
@@ -309,11 +412,12 @@ export function PhysicsRope({ holds, visual, className }: Props) {
         drawHalf(0, points.length - 1, colors, tautWidth);
       }
 
+      // Top drum
       const top = points[0];
       ctx.fillStyle = '#2c241c';
       ctx.strokeStyle = '#5a4c3c';
       ctx.lineWidth = 1.5;
-      roundRect(ctx, top.x - 34, top.y - 14, 68, 22, 6);
+      roundRectPath(ctx, top.x - 34, top.y - 14, 68, 22, 6);
       ctx.fill();
       ctx.stroke();
       ctx.beginPath();
@@ -321,33 +425,13 @@ export function PhysicsRope({ holds, visual, className }: Props) {
       ctx.arc(top.x, top.y - 3, 3.5, 0, Math.PI * 2);
       ctx.fill();
 
-      const bot = points[points.length - 1];
-      ctx.beginPath();
-      ctx.arc(bot.x, bot.y + 12, 15, 0, Math.PI * 2);
-      ctx.fillStyle = '#2a221c';
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = colors.ring;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(bot.x, bot.y + 12, 6.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#12100e';
-      ctx.fill();
-
-      // Hold badge in the ring
-      if (!snapped && holdsRef.current > 0) {
-        ctx.fillStyle = colors.ring;
-        ctx.font = '700 11px "DM Sans", system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(holdsRef.current), bot.x, bot.y + 12);
-      }
+      drawWeight(points[points.length - 1], colors);
 
       for (const f of fibers) {
         ctx.save();
         ctx.translate(f.x, f.y);
         ctx.rotate(f.rot);
-        ctx.globalAlpha = Math.max(0, f.life);
+        ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
         ctx.strokeStyle = '#c48a4a';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -360,12 +444,12 @@ export function PhysicsRope({ holds, visual, className }: Props) {
 
       if (visualRef.current === 'fraying' && !snapped) {
         const mid = points[Math.floor(points.length * 0.5)];
-        const glow = ctx.createRadialGradient(mid.x, mid.y, 4, mid.x, mid.y, 56);
-        glow.addColorStop(0, 'rgba(226, 181, 106, 0.3)');
+        const glow = ctx.createRadialGradient(mid.x, mid.y, 4, mid.x, mid.y, 60);
+        glow.addColorStop(0, 'rgba(226, 181, 106, 0.32)');
         glow.addColorStop(1, 'rgba(226, 181, 106, 0)');
         ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.arc(mid.x, mid.y, 56, 0, Math.PI * 2);
+        ctx.arc(mid.x, mid.y, 60, 0, Math.PI * 2);
         ctx.fill();
       }
     };
@@ -392,7 +476,7 @@ export function PhysicsRope({ holds, visual, className }: Props) {
   return <canvas ref={canvasRef} className={className ?? 'physics-rope'} aria-hidden />;
 }
 
-function roundRect(
+function roundRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
