@@ -643,6 +643,43 @@ input {
   gap: 10px;
 }
 
+.intensity-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+@media (min-width: 420px) {
+  .intensity-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.btn.intensity-ease {
+  background: linear-gradient(165deg, #c4b08a, #6a5a40);
+  color: #1a1410;
+}
+
+.btn.intensity-steady {
+  background: linear-gradient(165deg, #d98a4e, #a24d28);
+  color: #fff6ee;
+}
+
+.btn.intensity-haul {
+  background: linear-gradient(165deg, #c45a3a, #6e2c1c);
+  color: #fff4ef;
+}
+
+.btn.intensity.pulling {
+  filter: brightness(1.08);
+  outline: 2px solid var(--gold);
+}
+
+.btn.bank-full {
+  width: 100%;
+}
+
 @media (max-width: 420px) {
   .choice-grid {
     grid-template-columns: 1fr;

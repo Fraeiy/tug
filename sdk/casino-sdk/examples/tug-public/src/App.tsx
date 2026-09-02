@@ -5,17 +5,24 @@ import { computeMaxWager } from '@chain/casino-sdk/guest';
 import { useCasinoHost } from './lib/useCasinoHost';
 import {
   EMPTY_HEX,
+  INTENSITIES,
+  INTENSITY_STEADY,
   MAX_HOLDS,
-  MULTIPLIER_TABLE,
   PHASE_SETTLED,
   PHASE_WAITING_PLAYER_ACTION,
   PHASE_WAITING_RANDOMNESS,
+  WAD,
   decodeGameState,
   encodeCashoutAction,
   encodeHoldAction,
-  formatMultiplier,
+  formatMultiplierFromCum,
+  formatMultiplierWad,
   maxReservedProfit,
-  payoutForHolds,
+  multiplierFromCum,
+  payoutFromCum,
+  previewMultiplierAfterHold,
+  worstCaseCum,
+  type Intensity,
   type TugState,
 } from './lib/tug';
 import { playBank, playCreak, playHoldSurvived, playSnap, playWager } from './lib/audio';
@@ -38,6 +45,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(false);
   const [multPulse, setMultPulse] = useState(false);
+  const [pendingIntensity, setPendingIntensity] = useState<Intensity | null>(null);
   const heardRef = useRef<string>('');
   const creakRef = useRef<number | null>(null);
   const prevHoldsRef = useRef(0);
@@ -52,7 +60,9 @@ export function App() {
 
   const maxWager = useMemo(() => {
     if (!snapshot) return undefined;
-    return computeMaxWager(snapshot, { maxMultiplierX: MULTIPLIER_TABLE[5] });
+    const worst = worstCaseCum();
+    const worstMult = Number(multiplierFromCum(worst.cumNum, worst.cumDen)) / Number(WAD);
+    return computeMaxWager(snapshot, { maxMultiplierX: worstMult });
   }, [snapshot]);
 
   const activeRow = useMemo(() => {
@@ -157,10 +167,13 @@ export function App() {
   }, [status, state]);
 
   const holds = state?.holdsSurvived ?? 0;
-  const currentMult = holds > 0 ? formatMultiplier(holds) : '—';
-  const nextMult = holds < MAX_HOLDS ? formatMultiplier(holds + 1) : 'AUTO';
-  const potential = holds > 0 && wager > 0n ? payoutForHolds(wager, holds) : 0n;
-  const nextPayout = holds < MAX_HOLDS && wager > 0n ? payoutForHolds(wager, holds + 1) : 0n;
+  const cumNum = state?.cumNum ?? 1n;
+  const cumDen = state?.cumDen ?? 1n;
+  const currentMult = holds > 0 ? formatMultiplierFromCum(cumNum, cumDen) : '—';
+  const potential = holds > 0 && wager > 0n ? payoutFromCum(wager, cumNum, cumDen) : 0n;
+  const strainIntensity: Intensity =
+    pendingIntensity ??
+    (state?.pendingHold ? (state.pendingIntensity as Intensity) : INTENSITY_STEADY);
 
   const placeWager = useCallback(async () => {
     if (!hostApi || !snapshot || !walletReady) return;
@@ -205,24 +218,29 @@ export function App() {
     }
   }, [hostApi, snapshot, walletReady, wagerInput, decimals, balance, maxWager, symbol]);
 
-  const requestHold = useCallback(async () => {
-    if (!hostApi || !resolvedSessionId || busy) return;
-    setError(null);
-    setBusy(true);
-    setStatus('resolving');
-    try {
-      await hostApi.submitAction({
-        sessionId: resolvedSessionId,
-        actionData: encodeHoldAction(),
-        randomnessRequestData: EMPTY_HEX,
-      });
-    } catch (err) {
-      setStatus('active');
-      setError(err instanceof Error ? err.message : 'Hold failed.');
-    } finally {
-      setBusy(false);
-    }
-  }, [hostApi, resolvedSessionId, busy]);
+  const requestHold = useCallback(
+    async (intensity: Intensity) => {
+      if (!hostApi || !resolvedSessionId || busy) return;
+      setError(null);
+      setBusy(true);
+      setPendingIntensity(intensity);
+      setStatus('resolving');
+      try {
+        await hostApi.submitAction({
+          sessionId: resolvedSessionId,
+          actionData: encodeHoldAction(intensity),
+          randomnessRequestData: EMPTY_HEX,
+        });
+      } catch (err) {
+        setStatus('active');
+        setPendingIntensity(null);
+        setError(err instanceof Error ? err.message : 'Hold failed.');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [hostApi, resolvedSessionId, busy],
+  );
 
   const cashOut = useCallback(async () => {
     if (!hostApi || !resolvedSessionId || busy || holds < 1) return;
@@ -249,8 +267,16 @@ export function App() {
     setWager(0n);
     setStatus('idle');
     setError(null);
+    setPendingIntensity(null);
     heardRef.current = '';
   };
+
+  // Clear pending intensity once we're back to an active choice or finished.
+  useEffect(() => {
+    if (status === 'active' || status === 'idle' || status === 'banked' || status === 'snapped') {
+      setPendingIntensity(null);
+    }
+  }, [status]);
 
   if (!hostApi || !snapshot) {
     return (
@@ -316,6 +342,7 @@ export function App() {
           currentMult={holds > 0 ? currentMult : undefined}
           potentialLabel={potentialLabel}
           multPulse={multPulse}
+          intensity={strainIntensity}
         />
 
         <aside className="console">
@@ -365,8 +392,8 @@ export function App() {
                   {busy ? 'Locking wager…' : 'Start round'}
                 </button>
                 <p className="coach">
-                  Each hold has an <strong>80%</strong> chance to climb the multiplier. After any
-                  climb you can bank — or tug again.
+                  Before every hold, pick a <strong>grip</strong> — Ease / Steady / Haul. Harder
+                  grips pay more if you survive. Bank anytime after a climb.
                 </p>
               </>
             )}
@@ -375,49 +402,75 @@ export function App() {
               <>
                 <div className="choice-copy">
                   <p>
-                    Next hold → <strong>{nextMult}</strong>
-                    {nextPayout > 0n && (
-                      <>
+                    Current · <strong>{currentMult}</strong>
+                    {potential > 0n && (
+                      <span className="muted">
                         {' '}
-                        <span className="muted">
-                          ({Number(formatUnits(nextPayout, decimals)).toLocaleString(undefined, {
-                            maximumFractionDigits: 3,
-                          })}{' '}
-                          {symbol} if you make it)
-                        </span>
-                      </>
+                        · bank now for{' '}
+                        {Number(formatUnits(potential, decimals)).toLocaleString(undefined, {
+                          maximumFractionDigits: 3,
+                        })}{' '}
+                        {symbol}
+                      </span>
                     )}
                   </p>
-                  <p className="risk">20% chance this tug snaps the rope.</p>
+                  <p className="risk">
+                    {status === 'resolving'
+                      ? 'Rope under load…'
+                      : 'Choose how hard to pull — risk resets every hold.'}
+                  </p>
                 </div>
-                <div className="choice-grid">
-                  <button
-                    type="button"
-                    className="btn risk xl"
-                    disabled={!canHold}
-                    onClick={() => void requestHold()}
-                  >
-                    <span className="btn-kicker">Risk it</span>
-                    <span className="btn-title">
-                      {status === 'resolving' ? 'Pulling…' : 'Hold'}
-                    </span>
-                    <span className="btn-sub">{nextMult} · 80%</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn secure xl"
-                    disabled={!canBank}
-                    onClick={() => void cashOut()}
-                  >
-                    <span className="btn-kicker">Take it</span>
-                    <span className="btn-title">Bank</span>
-                    <span className="btn-sub">
-                      {canBank
-                        ? `${currentMult} · ${Number(formatUnits(potential, decimals)).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${symbol}`
-                        : 'Survive one hold first'}
-                    </span>
-                  </button>
-                </div>
+
+                {holds < MAX_HOLDS && (
+                  <div className="intensity-grid">
+                    {INTENSITIES.map(row => {
+                      const nextMultWad = previewMultiplierAfterHold(cumNum, cumDen, row.id);
+                      const nextPay =
+                        wager > 0n ? (wager * nextMultWad) / WAD : 0n;
+                      const failPct = 100 - Number(row.pDisplay.replace('%', ''));
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          className={`btn intensity xl intensity-${row.label.toLowerCase()}${
+                            pendingIntensity === row.id ? ' pulling' : ''
+                          }`}
+                          disabled={!canHold}
+                          onClick={() => void requestHold(row.id)}
+                        >
+                          <span className="btn-kicker">
+                            {status === 'resolving' && pendingIntensity === row.id
+                              ? 'Pulling…'
+                              : `${failPct}% snap`}
+                          </span>
+                          <span className="btn-title">{row.label}</span>
+                          <span className="btn-sub">
+                            {row.pDisplay} · → {formatMultiplierWad(nextMultWad)}
+                            {nextPay > 0n &&
+                              ` · ${Number(formatUnits(nextPay, decimals)).toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })} ${symbol}`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="btn secure xl bank-full"
+                  disabled={!canBank}
+                  onClick={() => void cashOut()}
+                >
+                  <span className="btn-kicker">Take it</span>
+                  <span className="btn-title">Bank</span>
+                  <span className="btn-sub">
+                    {canBank
+                      ? `${currentMult} · ${Number(formatUnits(potential, decimals)).toLocaleString(undefined, { maximumFractionDigits: 3 })} ${symbol}`
+                      : 'Survive one hold first'}
+                  </span>
+                </button>
               </>
             )}
 
@@ -454,21 +507,33 @@ export function App() {
 
           <div className="console-card ladder">
             <div className="ladder-head">
-              <h2>Climb</h2>
+              <h2>Grips</h2>
               <span>95% RTP</span>
             </div>
             <ol>
-              {[1, 2, 3, 4, 5].map(n => (
-                <li key={n} className={holds === n ? 'on' : holds > n ? 'done' : ''}>
-                  <span className="n">H{n}</span>
+              {INTENSITIES.map(row => (
+                <li
+                  key={row.id}
+                  className={
+                    pendingIntensity === row.id ||
+                    (state?.pendingHold && state.pendingIntensity === row.id)
+                      ? 'on'
+                      : ''
+                  }
+                >
+                  <span className="n">{row.label[0]}</span>
                   <span className="bar">
-                    <i style={{ width: `${(n / MAX_HOLDS) * 100}%` }} />
+                    <i style={{ width: `${Number(row.pDisplay.replace('%', ''))}%` }} />
                   </span>
-                  <span className="m">{formatMultiplier(n)}</span>
+                  <span className="m">
+                    {row.label} · {row.pDisplay}
+                  </span>
                 </li>
               ))}
             </ol>
-            <p className="fine">Hold 5 auto-banks. No unbounded risk.</p>
+            <p className="fine">
+              Mult = RTP ÷ cumulative survival. Hold 5 auto-banks. Re-pick risk every tug.
+            </p>
           </div>
         </aside>
       </main>

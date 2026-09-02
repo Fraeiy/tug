@@ -15,12 +15,12 @@ import {
   PHASE_SETTLED,
   PHASE_WAITING_PLAYER_ACTION,
   PHASE_WAITING_RANDOMNESS,
+  applySurvive,
   decodeGameState,
+  decodeHoldAction,
   encodeCashoutAction,
-  encodeHoldAction,
   initialState,
-  maxPayoutForWager,
-  payoutForHolds,
+  payoutFromCum,
   survivedFromRandomness,
   type TugState,
 } from './tug';
@@ -32,7 +32,6 @@ export function wantsDemoMode(): boolean {
   if (typeof window === 'undefined') return false;
   const params = new URLSearchParams(window.location.search);
   if (params.get(DEMO_FLAG) === '1' || params.get(DEMO_FLAG) === 'true') return true;
-  // Auto-demo only when not embedded and caller asks for fallback.
   return false;
 }
 
@@ -45,6 +44,10 @@ export function isEmbedded(): boolean {
 }
 
 function encodeState(state: TugState): HexString {
+  const randomness =
+    state.lastRandomness === EMPTY_HEX
+      ? (('0x' + '00'.repeat(32)) as HexString)
+      : state.lastRandomness;
   return encodeAbiParameters(
     [
       { type: 'uint8' },
@@ -52,13 +55,19 @@ function encodeState(state: TugState): HexString {
       { type: 'bool' },
       { type: 'bool' },
       { type: 'bytes32' },
+      { type: 'uint256' },
+      { type: 'uint256' },
+      { type: 'uint8' },
     ],
     [
       state.holdsSurvived,
       state.pendingHold,
       state.snapped,
       state.banked,
-      state.lastRandomness === EMPTY_HEX ? ('0x' + '00'.repeat(32)) as HexString : state.lastRandomness,
+      randomness,
+      state.cumNum,
+      state.cumDen,
+      state.pendingIntensity,
     ],
   );
 }
@@ -158,25 +167,25 @@ export function createDemoHost(): DemoControllers {
       if (!row || row.isSettled) throw new Error('No active session');
       const state = decodeGameState(row.raw.gameState as HexString) ?? initialState();
       const wager = BigInt(row.wager ?? '0');
-      const isHold = actionData.toLowerCase() === encodeHoldAction().toLowerCase();
+      const hold = decodeHoldAction(actionData as HexString);
       const isCash = actionData.toLowerCase() === encodeCashoutAction().toLowerCase();
 
-      if (isHold) {
+      if (hold) {
         if (state.holdsSurvived >= MAX_HOLDS) throw new Error('Max holds');
         state.pendingHold = true;
+        state.pendingIntensity = hold.intensity;
         row.phase = PHASE_WAITING_RANDOMNESS;
         row.phaseName = 'WAITING_RANDOMNESS';
         row.raw.gameState = encodeState(state);
         push();
 
-        // Resolve VRF shortly after — mirrors local simulator latency.
         await new Promise(r => setTimeout(r, 450));
         const word = randomWord();
         const hex = `0x${word.toString(16).padStart(64, '0')}` as HexString;
         state.pendingHold = false;
         state.lastRandomness = hex;
 
-        if (!survivedFromRandomness(word)) {
+        if (!survivedFromRandomness(word, hold.intensity)) {
           state.snapped = true;
           row.phase = PHASE_SETTLED;
           row.phaseName = 'SETTLED';
@@ -189,10 +198,13 @@ export function createDemoHost(): DemoControllers {
           return { transactionHash: ('0x' + 'cd'.repeat(32)) as HexString };
         }
 
+        const cum = applySurvive(state.cumNum, state.cumDen, hold.intensity);
+        state.cumNum = cum.cumNum;
+        state.cumDen = cum.cumDen;
         state.holdsSurvived += 1;
         if (state.holdsSurvived === MAX_HOLDS) {
           state.banked = true;
-          const payout = payoutForHolds(wager, state.holdsSurvived);
+          const payout = payoutFromCum(wager, state.cumNum, state.cumDen);
           row.phase = PHASE_SETTLED;
           row.phaseName = 'SETTLED';
           row.payout = payout.toString();
@@ -215,7 +227,7 @@ export function createDemoHost(): DemoControllers {
       if (isCash) {
         if (state.holdsSurvived < 1) throw new Error('Nothing to bank');
         state.banked = true;
-        const payout = payoutForHolds(wager, state.holdsSurvived);
+        const payout = payoutFromCum(wager, state.cumNum, state.cumDen);
         row.phase = PHASE_SETTLED;
         row.phaseName = 'SETTLED';
         row.payout = payout.toString();
@@ -242,9 +254,6 @@ export function createDemoHost(): DemoControllers {
       }
     },
   };
-
-  // Silence unused import in tree-shaken builds.
-  void maxPayoutForWager;
 
   return {
     hostApi,

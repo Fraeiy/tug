@@ -4,14 +4,29 @@ import type { HexString } from '@chain/casino-sdk';
 /** Exact game math — mirrors TugGame.sol. Do not re-derive differently. */
 export const WAD = 10n ** 18n;
 export const RTP_WAD = 95n * 10n ** 16n; // 0.95
-export const P_NUM = 4n;
-export const P_DEN = 5n;
 export const MAX_HOLDS = 5;
-export const SURVIVE_P = 0.8;
 export const RTP = 0.95;
 
-/** Multiplier table from mult(N) = RTP / p^N (display rounding matches jam brief). */
-export const MULTIPLIER_TABLE: Record<number, number> = {
+export const INTENSITY_EASE = 0;
+export const INTENSITY_STEADY = 1;
+export const INTENSITY_HAUL = 2;
+
+export type Intensity = typeof INTENSITY_EASE | typeof INTENSITY_STEADY | typeof INTENSITY_HAUL;
+
+export const INTENSITIES: ReadonlyArray<{
+  id: Intensity;
+  label: string;
+  pDisplay: string;
+  num: bigint;
+  den: bigint;
+}> = [
+  { id: INTENSITY_EASE, label: 'Ease', pDisplay: '90%', num: 9n, den: 10n },
+  { id: INTENSITY_STEADY, label: 'Steady', pDisplay: '80%', num: 4n, den: 5n },
+  { id: INTENSITY_HAUL, label: 'Haul', pDisplay: '65%', num: 13n, den: 20n },
+];
+
+/** Regression display values for the all-STEADY path (old fixed ladder). */
+export const STEADY_MULT_REGRESSION: Record<number, number> = {
   1: 1.1875,
   2: 1.484375,
   3: 1.8554688,
@@ -36,6 +51,9 @@ export type TugState = {
   snapped: boolean;
   banked: boolean;
   lastRandomness: HexString;
+  cumNum: bigint;
+  cumDen: bigint;
+  pendingIntensity: number;
 };
 
 const GAME_STATE_PARAMS = [
@@ -44,33 +62,79 @@ const GAME_STATE_PARAMS = [
   { type: 'bool' },
   { type: 'bool' },
   { type: 'bytes32' },
+  { type: 'uint256' },
+  { type: 'uint256' },
+  { type: 'uint8' },
 ] as const;
 
-export function pPowWad(n: number): bigint {
-  if (n < 1 || n > MAX_HOLDS) throw new Error(`bad N: ${n}`);
-  let pow = WAD;
-  for (let i = 0; i < n; i++) {
-    pow = (pow * P_NUM) / P_DEN;
+export function probabilityFraction(intensity: number): { num: bigint; den: bigint } {
+  const row = INTENSITIES.find(i => i.id === intensity);
+  if (!row) throw new Error(`invalid intensity: ${intensity}`);
+  return { num: row.num, den: row.den };
+}
+
+export function probabilityForIntensity(intensity: number): bigint {
+  const { num, den } = probabilityFraction(intensity);
+  return (WAD * num) / den;
+}
+
+export function isValidIntensity(intensity: number): intensity is Intensity {
+  return intensity === INTENSITY_EASE || intensity === INTENSITY_STEADY || intensity === INTENSITY_HAUL;
+}
+
+/** Apply one survived hold to the exact rational C = num/den. */
+export function applySurvive(
+  cumNum: bigint,
+  cumDen: bigint,
+  intensity: number,
+): { cumNum: bigint; cumDen: bigint } {
+  const { num, den } = probabilityFraction(intensity);
+  return { cumNum: cumNum * num, cumDen: cumDen * den };
+}
+
+export function multiplierFromCum(cumNum: bigint, cumDen: bigint): bigint {
+  if (cumNum <= 0n) throw new Error('zero num');
+  return (RTP_WAD * cumDen) / cumNum;
+}
+
+/**
+ * Exact RTP identity in integer math:
+ * (cumNum * mult + (RTP_WAD * cumDen % cumNum)) / cumDen == RTP_WAD
+ */
+export function rtpProductFromCum(cumNum: bigint, cumDen: bigint): bigint {
+  const mult = multiplierFromCum(cumNum, cumDen);
+  const rem = (RTP_WAD * cumDen) % cumNum;
+  return (cumNum * mult + rem) / cumDen;
+}
+
+export function payoutFromCum(wager: bigint, cumNum: bigint, cumDen: bigint): bigint {
+  if (cumNum === 1n && cumDen === 1n) return 0n;
+  return (wager * RTP_WAD * cumDen) / (cumNum * WAD);
+}
+
+export function previewMultiplierAfterHold(
+  cumNum: bigint,
+  cumDen: bigint,
+  intensity: number,
+): bigint {
+  const next = applySurvive(cumNum, cumDen, intensity);
+  return multiplierFromCum(next.cumNum, next.cumDen);
+}
+
+export function worstCaseCum(): { cumNum: bigint; cumDen: bigint } {
+  let cumNum = 1n;
+  let cumDen = 1n;
+  for (let i = 0; i < MAX_HOLDS; i++) {
+    const next = applySurvive(cumNum, cumDen, INTENSITY_HAUL);
+    cumNum = next.cumNum;
+    cumDen = next.cumDen;
   }
-  return pow;
-}
-
-export function multiplierWad(n: number): bigint {
-  return (RTP_WAD * WAD) / pPowWad(n);
-}
-
-/** RTP invariant: p^N * mult(N) == RTP (WAD). */
-export function rtpProductWad(n: number): bigint {
-  return (pPowWad(n) * multiplierWad(n)) / WAD;
-}
-
-export function payoutForHolds(wager: bigint, holds: number): bigint {
-  if (holds <= 0) return 0n;
-  return (wager * multiplierWad(holds)) / WAD;
+  return { cumNum, cumDen };
 }
 
 export function maxPayoutForWager(wager: bigint): bigint {
-  return payoutForHolds(wager, MAX_HOLDS);
+  const { cumNum, cumDen } = worstCaseCum();
+  return payoutFromCum(wager, cumNum, cumDen);
 }
 
 export function maxReservedProfit(wager: bigint): bigint {
@@ -78,43 +142,83 @@ export function maxReservedProfit(wager: bigint): bigint {
   return maxPayout > wager ? maxPayout - wager : 0n;
 }
 
-export function formatMultiplier(n: number): string {
-  if (n <= 0) return '—';
-  const exact = Number(multiplierWad(n)) / Number(WAD);
+export function steadyCum(n: number): { cumNum: bigint; cumDen: bigint } {
+  if (n < 1 || n > MAX_HOLDS) throw new Error(`bad N: ${n}`);
+  let cumNum = 1n;
+  let cumDen = 1n;
+  for (let i = 0; i < n; i++) {
+    const next = applySurvive(cumNum, cumDen, INTENSITY_STEADY);
+    cumNum = next.cumNum;
+    cumDen = next.cumDen;
+  }
+  return { cumNum, cumDen };
+}
+
+export function formatMultiplierFromCum(cumNum: bigint, cumDen: bigint): string {
+  if (cumNum === 1n && cumDen === 1n) return '—';
+  const exact = Number(multiplierFromCum(cumNum, cumDen)) / Number(WAD);
   return `${exact.toFixed(4)}×`;
 }
 
-export function surviveChanceDisplay(holdsAlready: number): string {
-  // Next hold always has fixed p = 80%.
-  void holdsAlready;
-  return '80%';
+export function formatMultiplierWad(multWad: bigint): string {
+  const exact = Number(multWad) / Number(WAD);
+  return `${exact.toFixed(4)}×`;
 }
 
-/** Unbiased p = 4/5 survival check — mirrors TugGame._survived. */
-export function survivedFromRandomness(randomness: bigint): boolean {
-  return randomness % P_DEN < P_NUM;
+export function survivedFromRandomness(randomness: bigint, intensity: number): boolean {
+  if (intensity === INTENSITY_EASE) return randomness % 10n < 9n;
+  if (intensity === INTENSITY_STEADY) return randomness % 5n < 4n;
+  if (intensity === INTENSITY_HAUL) return randomness % 20n < 13n;
+  throw new Error(`invalid intensity: ${intensity}`);
 }
 
-export function encodeHoldAction(): HexString {
-  return encodeAbiParameters([{ type: 'uint8' }], [ACTION_HOLD]);
+export function encodeHoldAction(intensity: number): HexString {
+  if (!isValidIntensity(intensity)) throw new Error(`invalid intensity: ${intensity}`);
+  return encodeAbiParameters(
+    [{ type: 'uint8' }, { type: 'uint8' }],
+    [ACTION_HOLD, intensity],
+  );
 }
 
 export function encodeCashoutAction(): HexString {
   return encodeAbiParameters([{ type: 'uint8' }], [ACTION_CASHOUT]);
 }
 
+export function decodeHoldAction(actionData: HexString): { intensity: Intensity } | null {
+  try {
+    const [action, intensity] = decodeAbiParameters(
+      [{ type: 'uint8' }, { type: 'uint8' }],
+      actionData,
+    );
+    if (Number(action) !== ACTION_HOLD) return null;
+    if (!isValidIntensity(Number(intensity))) return null;
+    return { intensity: Number(intensity) as Intensity };
+  } catch {
+    return null;
+  }
+}
+
 export function decodeGameState(gameState: HexString): TugState | null {
   try {
-    const [holdsSurvived, pendingHold, snapped, banked, lastRandomness] = decodeAbiParameters(
-      GAME_STATE_PARAMS,
-      gameState,
-    );
+    const [
+      holdsSurvived,
+      pendingHold,
+      snapped,
+      banked,
+      lastRandomness,
+      cumNum,
+      cumDen,
+      pendingIntensity,
+    ] = decodeAbiParameters(GAME_STATE_PARAMS, gameState);
     return {
       holdsSurvived: Number(holdsSurvived),
       pendingHold,
       snapped,
       banked,
       lastRandomness: lastRandomness as HexString,
+      cumNum,
+      cumDen,
+      pendingIntensity: Number(pendingIntensity),
     };
   } catch {
     return null;
@@ -132,5 +236,20 @@ export function initialState(): TugState {
     snapped: false,
     banked: false,
     lastRandomness: EMPTY_HEX,
+    cumNum: 1n,
+    cumDen: 1n,
+    pendingIntensity: 0,
   };
+}
+
+export function allIntensitySequences(): Intensity[][] {
+  const out: Intensity[][] = [];
+  const ids: Intensity[] = [INTENSITY_EASE, INTENSITY_STEADY, INTENSITY_HAUL];
+  const walk = (prefix: Intensity[]) => {
+    if (prefix.length > 0) out.push([...prefix]);
+    if (prefix.length >= MAX_HOLDS) return;
+    for (const id of ids) walk([...prefix, id]);
+  };
+  walk([]);
+  return out;
 }

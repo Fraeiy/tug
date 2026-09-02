@@ -6,7 +6,7 @@
   "locales": {
     "en": {
       "name": "Tug",
-      "description": "Hold-or-bank tension game: survive VRF holds to climb the multiplier, then bank — or risk another tug. Fail snaps the rope and loses the wager. Max 5 holds; hold 5 auto-banks."
+      "description": "Hold-or-bank rope game: before each VRF hold pick Ease/Steady/Haul grip intensity. Multiplier tracks cumulative survival odds. Bank anytime after a climb; snap loses the wager. Max 5 holds; hold 5 auto-banks. 95% RTP."
     }
   },
   "presentation": {

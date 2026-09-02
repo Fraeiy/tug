@@ -1,9 +1,13 @@
 import { useEffect, useRef } from 'react';
+import type { Intensity } from '../lib/tug';
+import { INTENSITY_EASE, INTENSITY_HAUL, INTENSITY_STEADY } from '../lib/tug';
 import type { RopeVisual } from './RopeStage';
 
 type Props = {
   holds: number;
   visual: RopeVisual;
+  /** Grip chosen for the current / pending hold — scales strain beyond hold count. */
+  intensity?: Intensity;
   className?: string;
 };
 
@@ -28,19 +32,27 @@ type Fiber = {
 
 const SEGMENTS = 30;
 const ITERATIONS = 5;
-/** kg shown on the hanging weight per survived hold (1-based index into this). */
+/** Base kg on the hanging weight per survived hold (1-based). */
 export const HOLD_WEIGHTS = [1, 2.5, 5, 9, 15];
+/** Extra kg added by the grip chosen for this tug. */
+export const INTENSITY_WEIGHT: Record<number, number> = {
+  [INTENSITY_EASE]: 0.5,
+  [INTENSITY_STEADY]: 2,
+  [INTENSITY_HAUL]: 6,
+};
 
 /**
  * Live Verlet rope: twisted hemp look, per-hold weight stretch, thrash under
  * load, and a physical mid-span snap with flying fibers.
  */
-export function PhysicsRope({ holds, visual, className }: Props) {
+export function PhysicsRope({ holds, visual, intensity = INTENSITY_STEADY, className }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const visualRef = useRef(visual);
   const holdsRef = useRef(holds);
+  const intensityRef = useRef(intensity);
   visualRef.current = visual;
   holdsRef.current = holds;
+  intensityRef.current = intensity;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,29 +78,38 @@ export function PhysicsRope({ holds, visual, className }: Props) {
     const topPin = () => ({ x: w * 0.5, y: h * 0.07 });
     const baseBottomY = () => h * 0.72;
 
+    const gripBoost = () => {
+      const g = intensityRef.current;
+      if (g === INTENSITY_HAUL) return 1.55;
+      if (g === INTENSITY_EASE) return 0.55;
+      return 1;
+    };
+
     const stretchPull = () => {
       const v = visualRef.current;
       const n = holdsRef.current;
-      // ~12% lengthening per hold, matching the fix brief.
-      let pull = 0.015 + n * 0.055;
+      const grip = gripBoost();
+      // ~12% lengthening per hold, scaled harder for Haul than Ease.
+      let pull = 0.015 + n * 0.055 * grip;
       if (v === 'fraying') {
-        const intensity = 0.5 + n * 0.4;
-        pull += 0.1 + Math.sin(time * 16) * (0.02 * intensity);
+        const jitter = 0.5 + n * 0.4 * grip;
+        pull += (0.08 + 0.06 * grip) + Math.sin(time * 16) * (0.02 * jitter);
       }
-      if (v === 'tension') pull += 0.02;
+      if (v === 'tension') pull += 0.015 * grip;
       if (v === 'banked') pull *= 0.45;
       if (v === 'idle') pull = 0.01;
       pull += bounce;
-      return Math.min(0.36, pull);
+      return Math.min(0.4, pull);
     };
 
     const swayIntensity = () => {
       const v = visualRef.current;
       const n = holdsRef.current;
-      if (v === 'fraying') return 2.5 + n * 0.6;
-      if (v === 'tension') return 0.5 + n * 0.35;
+      const grip = gripBoost();
+      if (v === 'fraying') return (2.2 + n * 0.55) * grip;
+      if (v === 'tension') return (0.45 + n * 0.3) * grip;
       if (v === 'idle') return 0.25;
-      return 0.4;
+      return 0.4 * grip;
     };
 
     const initRope = () => {
@@ -350,8 +371,12 @@ export function PhysicsRope({ holds, visual, className }: Props) {
 
     const drawWeight = (bot: Point, colors: ReturnType<typeof palette>) => {
       const n = holdsRef.current;
-      const kg = n > 0 ? (HOLD_WEIGHTS[n - 1] ?? HOLD_WEIGHTS[HOLD_WEIGHTS.length - 1]) : 0;
-      const scale = 1 + Math.max(0, n - 1) * 0.15;
+      const baseKg = n > 0 ? (HOLD_WEIGHTS[n - 1] ?? HOLD_WEIGHTS[HOLD_WEIGHTS.length - 1]) : 0;
+      const gripKg = INTENSITY_WEIGHT[intensityRef.current] ?? 2;
+      const showGrip = visualRef.current === 'fraying' || visualRef.current === 'tension';
+      const kg = n > 0 ? baseKg + (showGrip ? gripKg : 0) : showGrip ? gripKg : 0;
+      const scale =
+        1 + Math.max(0, n - 1) * 0.12 + (showGrip ? gripBoost() * 0.12 : 0);
       const cx = bot.x;
       const cy = bot.y + 14;
 

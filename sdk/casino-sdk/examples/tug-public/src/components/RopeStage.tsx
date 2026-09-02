@@ -1,4 +1,4 @@
-import { MAX_HOLDS, formatMultiplier } from '../lib/tug';
+import { INTENSITIES, MAX_HOLDS, type Intensity } from '../lib/tug';
 import { PhysicsRope } from './PhysicsRope';
 
 export type RopeVisual = 'idle' | 'tension' | 'fraying' | 'snap' | 'banked';
@@ -10,6 +10,7 @@ type Props = {
   currentMult?: string;
   potentialLabel?: string;
   multPulse?: boolean;
+  intensity?: Intensity;
 };
 
 export function RopeStage({
@@ -19,6 +20,7 @@ export function RopeStage({
   currentMult,
   potentialLabel,
   multPulse,
+  intensity = 1,
 }: Props) {
   return (
     <section
@@ -30,7 +32,7 @@ export function RopeStage({
 
       <header className="stage-headline">
         <p className="rule">
-          <span>Survive</span> a hold to climb · <span>Bank</span> to cash out ·{' '}
+          Pick a <span>grip</span> each hold · <span>Bank</span> to cash out ·{' '}
           <span className="bad">Snap</span> loses the wager
         </p>
       </header>
@@ -43,20 +45,22 @@ export function RopeStage({
 
         <div className="track" aria-hidden>
           <div className="track-rail" />
-          {[1, 2, 3, 4, 5].map(n => (
+          {INTENSITIES.map((row, i) => (
             <div
-              key={n}
-              className={`rung${holds >= n ? ' lit' : ''}${holds === n ? ' now' : ''}`}
-              style={{ top: `${18 + ((n - 1) / (MAX_HOLDS - 1)) * 62}%` }}
+              key={row.id}
+              className={`rung${intensity === row.id && pending ? ' now' : ''}${holds > i ? ' lit' : ''}`}
+              style={{ top: `${18 + (i / (MAX_HOLDS - 1)) * 50}%` }}
             >
               <i />
-              <em>{formatMultiplier(n)}</em>
+              <em>
+                {row.label} {row.pDisplay}
+              </em>
             </div>
           ))}
         </div>
 
         <div className="rope-viewport">
-          <PhysicsRope holds={holds} visual={visual} />
+          <PhysicsRope holds={holds} visual={visual} intensity={intensity} />
         </div>
       </div>
 
@@ -64,7 +68,7 @@ export function RopeStage({
         <div className="readout-main">
           <span className="label">Current</span>
           <strong className={`mult${multPulse ? ' pulse' : ''}`}>
-            {holds > 0 ? (currentMult ?? formatMultiplier(holds)) : '1.00×'}
+            {holds > 0 ? (currentMult ?? '—') : '1.00×'}
           </strong>
         </div>
         {potentialLabel ? <p className="potential">{potentialLabel}</p> : null}
