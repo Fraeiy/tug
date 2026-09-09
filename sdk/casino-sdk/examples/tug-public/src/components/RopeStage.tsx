@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { INTENSITIES, MAX_HOLDS, type Intensity } from '../lib/tug';
 import { PhysicsRope } from './PhysicsRope';
 
@@ -22,6 +23,32 @@ export function RopeStage({
   multPulse,
   intensity = 1,
 }: Props) {
+  const jamDockRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let observer: MutationObserver | null = null;
+    const dockBadge = () => {
+      const badge = document.getElementById('chain-jam-badge');
+      const dock = jamDockRef.current;
+      if (!badge || !dock || badge.parentElement === dock) return Boolean(badge);
+      dock.appendChild(badge);
+      return true;
+    };
+
+    if (!dockBadge()) {
+      observer = new MutationObserver(() => {
+        if (dockBadge()) observer?.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    return () => {
+      observer?.disconnect();
+      const badge = document.getElementById('chain-jam-badge');
+      if (badge?.parentElement === jamDockRef.current) document.body.appendChild(badge);
+    };
+  }, []);
+
   return (
     <section
       className={`stage visual-${visual}${pending ? ' is-pending' : ''}`}
@@ -60,7 +87,12 @@ export function RopeStage({
         </div>
 
         <div className="rope-viewport">
-          <PhysicsRope holds={holds} visual={visual} intensity={intensity} />
+          <PhysicsRope
+            key={visual === 'snap' ? 'snapped-rope' : 'live-rope'}
+            holds={holds}
+            visual={visual}
+            intensity={intensity}
+          />
         </div>
       </div>
 
@@ -80,6 +112,7 @@ export function RopeStage({
           {visual === 'banked' && 'Banked. Payout locked.'}
         </p>
       </div>
+      <div ref={jamDockRef} className="jam-dock" />
     </section>
   );
 }

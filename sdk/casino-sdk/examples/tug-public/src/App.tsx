@@ -28,7 +28,7 @@ import {
 import { playBank, playCreak, playHoldSurvived, playSnap, playWager } from './lib/audio';
 import { RopeStage, type RopeVisual } from './components/RopeStage';
 
-type RoundStatus = 'idle' | 'opening' | 'active' | 'resolving' | 'snapped' | 'banked';
+type RoundStatus = 'idle' | 'opening' | 'active' | 'resolving' | 'snapping' | 'snapped' | 'banked';
 
 const WAGER_PRESETS = ['1', '5', '10', '25', '50'];
 
@@ -49,6 +49,7 @@ export function App() {
   const heardRef = useRef<string>('');
   const creakRef = useRef<number | null>(null);
   const prevHoldsRef = useRef(0);
+  const actionLockRef = useRef(false);
 
   const decimals = snapshot?.token.decimals ?? 18;
   const symbol = snapshot?.token.symbol ?? 'chUSD';
@@ -87,7 +88,11 @@ export function App() {
     if (activeRow.isSettled || activeRow.phase === PHASE_SETTLED) {
       const pay = activeRow.payout !== undefined ? BigInt(activeRow.payout) : 0n;
       setPayout(pay);
-      if (decoded?.snapped) setStatus('snapped');
+      if (decoded?.snapped) {
+        setStatus(current =>
+          current === 'snapping' || current === 'snapped' ? current : 'snapping',
+        );
+      }
       else if (decoded?.banked || pay > 0n) setStatus('banked');
       else if (activeRow.payout !== undefined && pay === 0n) setStatus('snapped');
       return;
@@ -97,6 +102,15 @@ export function App() {
       setStatus('active');
     }
   }, [activeRow]);
+
+  // Let the state-driven rope break read before revealing the loss controls.
+  // This timer is deliberately independent of canvas/animation events so a
+  // throttled mobile frame or reduced-motion setting cannot stall the round.
+  useEffect(() => {
+    if (status !== 'snapping') return;
+    const timer = window.setTimeout(() => setStatus('snapped'), 700);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   // Creak loop while resolving.
   useEffect(() => {
@@ -159,7 +173,7 @@ export function App() {
   }, [status, resolvedSessionId, hostApi]);
 
   const visual: RopeVisual = useMemo(() => {
-    if (status === 'snapped') return 'snap';
+    if (status === 'snapping' || status === 'snapped') return 'snap';
     if (status === 'banked') return 'banked';
     if (status === 'resolving') return 'fraying';
     if ((state?.holdsSurvived ?? 0) > 0) return 'tension';
@@ -220,7 +234,8 @@ export function App() {
 
   const requestHold = useCallback(
     async (intensity: Intensity) => {
-      if (!hostApi || !resolvedSessionId || busy) return;
+      if (!hostApi || !resolvedSessionId || busy || actionLockRef.current) return;
+      actionLockRef.current = true;
       setError(null);
       setBusy(true);
       setPendingIntensity(intensity);
@@ -236,6 +251,7 @@ export function App() {
         setPendingIntensity(null);
         setError(err instanceof Error ? err.message : 'Hold failed.');
       } finally {
+        actionLockRef.current = false;
         setBusy(false);
       }
     },
@@ -243,7 +259,8 @@ export function App() {
   );
 
   const cashOut = useCallback(async () => {
-    if (!hostApi || !resolvedSessionId || busy || holds < 1) return;
+    if (!hostApi || !resolvedSessionId || busy || actionLockRef.current || holds < 1) return;
+    actionLockRef.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -255,6 +272,7 @@ export function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bank failed.');
     } finally {
+      actionLockRef.current = false;
       setBusy(false);
     }
   }, [hostApi, resolvedSessionId, busy, holds]);
@@ -268,6 +286,7 @@ export function App() {
     setStatus('idle');
     setError(null);
     setPendingIntensity(null);
+    actionLockRef.current = false;
     heardRef.current = '';
   };
 
@@ -346,7 +365,10 @@ export function App() {
         />
 
         <aside className="console">
-          <div className="console-card decision">
+          <div
+            className="console-card decision"
+            aria-busy={status === 'resolving' || status === 'snapping'}
+          >
             <div className="meter" aria-hidden>
               <div className="meter-fill" style={{ width: `${(holds / MAX_HOLDS) * 100}%` }} />
               <span>
@@ -472,6 +494,13 @@ export function App() {
                   </span>
                 </button>
               </>
+            )}
+
+            {status === 'snapping' && (
+              <div className="snap-progress" role="status">
+                <span>Rope snapped</span>
+                <strong>Wager lost</strong>
+              </div>
             )}
 
             {finished && (

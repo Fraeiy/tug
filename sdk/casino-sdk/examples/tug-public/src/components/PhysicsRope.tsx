@@ -135,14 +135,17 @@ export function PhysicsRope({ holds, visual, intensity = INTENSITY_STEADY, class
       if (!parent) return;
       const rect = parent.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = Math.max(280, rect.width);
-      h = Math.max(360, rect.height);
+      w = Math.max(1, rect.width);
+      h = Math.max(1, rect.height);
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       initRope();
+      // Mobile browser chrome and outcome content can resize the stage during
+      // the break. Re-apply the state-driven snap after reinitialization.
+      if (visualRef.current === 'snap') triggerSnap();
     };
 
     const triggerSnap = () => {
