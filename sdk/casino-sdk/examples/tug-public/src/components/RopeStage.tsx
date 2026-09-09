@@ -80,7 +80,7 @@ export function RopeStage({
             >
               <i />
               <em>
-                {row.label} {row.pDisplay}
+                {row.label} {100 - Number(row.pDisplay.replace('%', ''))}% snap
               </em>
             </div>
           ))}

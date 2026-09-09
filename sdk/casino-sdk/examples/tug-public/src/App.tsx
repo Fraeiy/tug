@@ -467,7 +467,7 @@ export function App() {
                           </span>
                           <span className="btn-title">{row.label}</span>
                           <span className="btn-sub">
-                            {row.pDisplay} · → {formatMultiplierWad(nextMultWad)}
+                            → {formatMultiplierWad(nextMultWad)}
                             {nextPay > 0n &&
                               ` · ${Number(formatUnits(nextPay, decimals)).toLocaleString(undefined, {
                                 maximumFractionDigits: 2,
@@ -552,10 +552,10 @@ export function App() {
                 >
                   <span className="n">{row.label[0]}</span>
                   <span className="bar">
-                    <i style={{ width: `${Number(row.pDisplay.replace('%', ''))}%` }} />
+                    <i style={{ width: `${100 - Number(row.pDisplay.replace('%', ''))}%` }} />
                   </span>
                   <span className="m">
-                    {row.label} · {row.pDisplay}
+                    {row.label} · {100 - Number(row.pDisplay.replace('%', ''))}% snap
                   </span>
                 </li>
               ))}

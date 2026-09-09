@@ -436,7 +436,7 @@ input {
   margin: 0 !important;
   transform: scale(0.9) !important;
   transform-origin: right bottom !important;
-  pointer-events: none !important;
+  pointer-events: auto !important;
 }
 
 .stage-readout {
