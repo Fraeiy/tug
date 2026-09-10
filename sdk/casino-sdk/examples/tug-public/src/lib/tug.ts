@@ -1,17 +1,28 @@
-import { decodeAbiParameters, encodeAbiParameters } from 'viem';
-import type { HexString } from '@chain/casino-sdk';
+import {
+  decodeAbiParameters,
+  encodeAbiParameters,
+  hexToBytes,
+  keccak256,
+  toHex,
+} from "viem";
+import type { HexString } from "@chain/casino-sdk";
 
 /** Exact game math — mirrors TugGame.sol. Do not re-derive differently. */
 export const WAD = 10n ** 18n;
 export const RTP_WAD = 95n * 10n ** 16n; // 0.95
 export const MAX_HOLDS = 5;
 export const RTP = 0.95;
+export const ROLL_SIDES = 20;
+export const ROLL_REJECT = 240;
+export const MIN_WAGER = "0.01";
+export const MAX_WAGER = "1000";
 
 export const INTENSITY_EASE = 0;
 export const INTENSITY_STEADY = 1;
 export const INTENSITY_HAUL = 2;
 
-export type Intensity = typeof INTENSITY_EASE | typeof INTENSITY_STEADY | typeof INTENSITY_HAUL;
+export type Intensity =
+  typeof INTENSITY_EASE | typeof INTENSITY_STEADY | typeof INTENSITY_HAUL;
 
 export const INTENSITIES: ReadonlyArray<{
   id: Intensity;
@@ -20,9 +31,9 @@ export const INTENSITIES: ReadonlyArray<{
   num: bigint;
   den: bigint;
 }> = [
-  { id: INTENSITY_EASE, label: 'Ease', pDisplay: '90%', num: 9n, den: 10n },
-  { id: INTENSITY_STEADY, label: 'Steady', pDisplay: '80%', num: 4n, den: 5n },
-  { id: INTENSITY_HAUL, label: 'Haul', pDisplay: '65%', num: 13n, den: 20n },
+  { id: INTENSITY_EASE, label: "Ease", pDisplay: "90%", num: 9n, den: 10n },
+  { id: INTENSITY_STEADY, label: "Steady", pDisplay: "80%", num: 4n, den: 5n },
+  { id: INTENSITY_HAUL, label: "Haul", pDisplay: "65%", num: 13n, den: 20n },
 ];
 
 /** Regression display values for the all-STEADY path (old fixed ladder). */
@@ -34,7 +45,7 @@ export const STEADY_MULT_REGRESSION: Record<number, number> = {
   5: 2.8991699,
 };
 
-export const EMPTY_HEX = '0x' as HexString;
+export const EMPTY_HEX = "0x" as HexString;
 export const ACTION_HOLD = 0;
 export const ACTION_CASHOUT = 1;
 
@@ -57,18 +68,21 @@ export type TugState = {
 };
 
 const GAME_STATE_PARAMS = [
-  { type: 'uint8' },
-  { type: 'bool' },
-  { type: 'bool' },
-  { type: 'bool' },
-  { type: 'bytes32' },
-  { type: 'uint256' },
-  { type: 'uint256' },
-  { type: 'uint8' },
+  { type: "uint8" },
+  { type: "bool" },
+  { type: "bool" },
+  { type: "bool" },
+  { type: "bytes32" },
+  { type: "uint256" },
+  { type: "uint256" },
+  { type: "uint8" },
 ] as const;
 
-export function probabilityFraction(intensity: number): { num: bigint; den: bigint } {
-  const row = INTENSITIES.find(i => i.id === intensity);
+export function probabilityFraction(intensity: number): {
+  num: bigint;
+  den: bigint;
+} {
+  const row = INTENSITIES.find((i) => i.id === intensity);
   if (!row) throw new Error(`invalid intensity: ${intensity}`);
   return { num: row.num, den: row.den };
 }
@@ -79,7 +93,11 @@ export function probabilityForIntensity(intensity: number): bigint {
 }
 
 export function isValidIntensity(intensity: number): intensity is Intensity {
-  return intensity === INTENSITY_EASE || intensity === INTENSITY_STEADY || intensity === INTENSITY_HAUL;
+  return (
+    intensity === INTENSITY_EASE ||
+    intensity === INTENSITY_STEADY ||
+    intensity === INTENSITY_HAUL
+  );
 }
 
 /** Apply one survived hold to the exact rational C = num/den. */
@@ -93,7 +111,7 @@ export function applySurvive(
 }
 
 export function multiplierFromCum(cumNum: bigint, cumDen: bigint): bigint {
-  if (cumNum <= 0n) throw new Error('zero num');
+  if (cumNum <= 0n) throw new Error("zero num");
   return (RTP_WAD * cumDen) / cumNum;
 }
 
@@ -107,7 +125,11 @@ export function rtpProductFromCum(cumNum: bigint, cumDen: bigint): bigint {
   return (cumNum * mult + rem) / cumDen;
 }
 
-export function payoutFromCum(wager: bigint, cumNum: bigint, cumDen: bigint): bigint {
+export function payoutFromCum(
+  wager: bigint,
+  cumNum: bigint,
+  cumDen: bigint,
+): bigint {
   if (cumNum === 1n && cumDen === 1n) return 0n;
   return (wager * RTP_WAD * cumDen) / (cumNum * WAD);
 }
@@ -154,40 +176,104 @@ export function steadyCum(n: number): { cumNum: bigint; cumDen: bigint } {
   return { cumNum, cumDen };
 }
 
-export function formatMultiplierFromCum(cumNum: bigint, cumDen: bigint): string {
-  if (cumNum === 1n && cumDen === 1n) return '—';
-  const exact = Number(multiplierFromCum(cumNum, cumDen)) / Number(WAD);
-  return `${exact.toFixed(4)}×`;
+export function formatMultiplierFromCum(
+  cumNum: bigint,
+  cumDen: bigint,
+): string {
+  if (cumNum === 1n && cumDen === 1n) return "—";
+  return formatMultiplierWad(multiplierFromCum(cumNum, cumDen));
 }
 
 export function formatMultiplierWad(multWad: bigint): string {
-  const exact = Number(multWad) / Number(WAD);
-  return `${exact.toFixed(4)}×`;
+  const scaled = (multWad * 10_000n) / WAD;
+  return `${scaled / 10_000n}.${(scaled % 10_000n).toString().padStart(4, "0")}×`;
 }
 
-export function survivedFromRandomness(randomness: bigint, intensity: number): boolean {
-  if (intensity === INTENSITY_EASE) return randomness % 10n < 9n;
-  if (intensity === INTENSITY_STEADY) return randomness % 5n < 4n;
-  if (intensity === INTENSITY_HAUL) return randomness % 20n < 13n;
+export function formatTokenAmountFloor(
+  value: bigint,
+  decimals: number,
+  maxFractionDigits = 4,
+): string {
+  const safeDecimals = Math.max(0, decimals);
+  const scale = 10n ** BigInt(safeDecimals);
+  const whole = value / scale;
+  const shownDigits = Math.min(safeDecimals, Math.max(0, maxFractionDigits));
+  if (shownDigits === 0) return whole.toLocaleString("en-US");
+  const fraction = (value % scale)
+    .toString()
+    .padStart(safeDecimals, "0")
+    .slice(0, shownDigits);
+  const trimmed = fraction.replace(/0+$/, "");
+  return trimmed
+    ? `${whole.toLocaleString("en-US")}.${trimmed}`
+    : whole.toLocaleString("en-US");
+}
+
+export function validateWagerInput(value: string, decimals: number): bigint {
+  const normalized = value.trim();
+  if (!/^(?:\d+)(?:\.\d+)?$/.test(normalized))
+    throw new Error("Enter a valid wager.");
+  const fractionDigits = normalized.split(".")[1]?.length ?? 0;
+  if (fractionDigits > decimals)
+    throw new Error(`Use no more than ${decimals} decimal places.`);
+
+  const wager = BigInt(
+    normalized
+      .replace(".", "")
+      .padEnd(normalized.split(".")[0].length + decimals, "0"),
+  );
+  const min = decimals >= 2 ? 10n ** BigInt(decimals - 2) : 1n;
+  const max = 1000n * 10n ** BigInt(decimals);
+  if (wager < min)
+    throw new Error(`Minimum wager is ${decimals >= 2 ? MIN_WAGER : "1"}.`);
+  if (wager > max) throw new Error(`Maximum wager is ${MAX_WAGER}.`);
+  return wager;
+}
+
+/** Unbiased 0..19 roll from VRF bytes using the SDK's rejection-sampling pattern. */
+export function roll20FromRandomness(randomness: bigint): number {
+  let seed = hexToBytes(toHex(randomness, { size: 32 }));
+  let index = 0;
+  for (;;) {
+    if (index === seed.length) {
+      seed = hexToBytes(keccak256(seed));
+      index = 0;
+    }
+    const byte = seed[index++];
+    if (byte < ROLL_REJECT) return byte % ROLL_SIDES;
+  }
+}
+
+export function survivedFromRandomness(
+  randomness: bigint,
+  intensity: number,
+): boolean {
+  const roll = roll20FromRandomness(randomness);
+  if (intensity === INTENSITY_EASE) return roll < 18;
+  if (intensity === INTENSITY_STEADY) return roll < 16;
+  if (intensity === INTENSITY_HAUL) return roll < 13;
   throw new Error(`invalid intensity: ${intensity}`);
 }
 
 export function encodeHoldAction(intensity: number): HexString {
-  if (!isValidIntensity(intensity)) throw new Error(`invalid intensity: ${intensity}`);
+  if (!isValidIntensity(intensity))
+    throw new Error(`invalid intensity: ${intensity}`);
   return encodeAbiParameters(
-    [{ type: 'uint8' }, { type: 'uint8' }],
+    [{ type: "uint8" }, { type: "uint8" }],
     [ACTION_HOLD, intensity],
   );
 }
 
 export function encodeCashoutAction(): HexString {
-  return encodeAbiParameters([{ type: 'uint8' }], [ACTION_CASHOUT]);
+  return encodeAbiParameters([{ type: "uint8" }], [ACTION_CASHOUT]);
 }
 
-export function decodeHoldAction(actionData: HexString): { intensity: Intensity } | null {
+export function decodeHoldAction(
+  actionData: HexString,
+): { intensity: Intensity } | null {
   try {
     const [action, intensity] = decodeAbiParameters(
-      [{ type: 'uint8' }, { type: 'uint8' }],
+      [{ type: "uint8" }, { type: "uint8" }],
       actionData,
     );
     if (Number(action) !== ACTION_HOLD) return null;
@@ -226,7 +312,11 @@ export function decodeGameState(gameState: HexString): TugState | null {
 }
 
 export function isTerminalPhase(phase: number | undefined): boolean {
-  return phase === PHASE_SETTLED || phase === PHASE_FORFEITED || phase === PHASE_CANCELLED;
+  return (
+    phase === PHASE_SETTLED ||
+    phase === PHASE_FORFEITED ||
+    phase === PHASE_CANCELLED
+  );
 }
 
 export function initialState(): TugState {

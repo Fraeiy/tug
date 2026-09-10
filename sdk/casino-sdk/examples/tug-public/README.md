@@ -1,70 +1,106 @@
-# Tug — Chain Jam entry
+# Tug — Chain Casino Game Jam
 
-Hold-or-bank tension game for [Chain Jam](https://jam.chain.wtf). Survive VRF holds
-(p = 80%) to climb the multiplier ladder, then **bank** — or risk another hold.
-Fail snaps the rope and loses the wager. Max 5 holds; hold 5 auto-banks.
+**Live standalone demo:** https://tug-static.vercel.app
 
-Mechanic: **chained binary check with stopping time** (not dice / crash / plinko).
+Tug is a five-hold risk-selection wagering game. Before every hold, the player chooses how aggressively to pull. Ease, Steady and Haul each change both survival probability and potential payout. After surviving, the player can bank or choose a new risk level for the next pull.
 
-## Math
+It is novel because risk is selected again before every physical tug. It is not a crash, limbo, or passive multiplier game: every hold is an explicit wager decision followed by one contract-settled VRF outcome.
 
-| Holds | Multiplier (`RTP / p^N`) |
-| ----- | ------------------------ |
-| 1     | 1.1875×                  |
-| 2     | 1.484375×                |
-| 3     | 1.85546875×              |
-| 4     | 2.3193359375×            |
-| 5     | 2.899169921875×          |
+## How to play
 
-- `p = 0.80`, `RTP = 0.95` (93–98% band)
-- Invariant (tested): `p^N * mult(N) == RTP` for every N
+1. Set your wager and start the round.
+2. Choose Ease, Steady, or Haul. More risk means a higher payout.
+3. Bank after surviving, or pull again. If the rope snaps, the wager is lost.
 
-## Run locally (SDK simulator)
+| Grip | Survival | Snap |
+| --- | ---: | ---: |
+| Ease | 90% | 10% |
+| Steady | 80% | 20% |
+| Haul | 65% | 35% |
 
-From the unzipped `@chain/casino-sdk` root:
+The fifth successful hold auto-banks.
+
+## RTP and payout math
+
+For a selected sequence with survival probabilities `p₁ … pₙ`:
+
+```text
+cumulative survival C = p₁ × … × pₙ
+gross cash-out multiplier = 0.95 / C
+gross payout = floor(wagerBaseUnits × 0.95 × cumulativeDenominator
+                     / cumulativeNumerator)
+```
+
+The 95% factor is applied once to the cumulative path, never once per hold. For example, Ease then Haul has `C = 0.90 × 0.65 = 0.585`, so its multiplier is `0.95 / 0.585 = 1.6239×` (displayed downward to four decimals). Contract payout uses one integer division in token base units; displayed financial values are also floored and never promise more than the contract pays.
+
+Automated tests exhaust all `3¹ + 3² + 3³ + 3⁴ + 3⁵ = 363` possible grip sequences, wager boundaries, token precision, and fifth-hold auto-bank. A deterministic simulation runs 1,000,000 rounds per representative strategy.
+
+## Chain Casino SDK integration
+
+- Contract: [`../../simulator/contracts/TugGame.sol`](../../simulator/contracts/TugGame.sol)
+- Guest bridge: [`src/lib/useCasinoHost.ts`](src/lib/useCasinoHost.ts)
+- Manifest: [`public/game.manifest.json`](public/game.manifest.json)
+- SDK interface: [`../../solidity/ICasinoGameV2.sol`](../../solidity/ICasinoGameV2.sol)
+
+`TugGame` implements `ICasinoGameV2`. `onSessionStart` reserves the maximum all-Haul liability and waits for a player action. Each encoded hold requests Chain VRF. `onRandomness` derives an unbiased 20-way roll using byte rejection sampling (`byte < 240`), then survives or settles the loss. Cash-out and hold-five auto-bank settle the gross payout on-chain.
+
+The iframe uses only `@chain/casino-sdk/guest` (`openSession`, `submitAction`, `revealOutcome`, and pushed host snapshots). The contract remains authoritative for outcomes and payouts.
+
+## Local simulator
+
+From `sdk/casino-sdk`:
 
 ```sh
 npm install
 npm start
 ```
 
-- Simulator harness: http://localhost:3300  
-  Point **Game URL** at `http://localhost:3200` and select **TugGame** once the
-  drop-in contract in `simulator/contracts/TugGame.sol` auto-deploys.
-- Tug UI: http://localhost:3200
+- Tug: http://localhost:3200
+- Chain simulator: http://localhost:3300
+- Local chain: http://localhost:8545
 
-## Standalone demo
-
-Open the built page directly (no iframe). After ~1.8s without a host handshake,
-**DEMO MODE** enables so the jam's standalone-playable gate is met. Force it with
-`?demo=1`. Demo mode is clearly labeled; production iframe play uses the real
-`@chain/casino-sdk` bridge only.
-
-## Build
+In the simulator, use game URL `http://localhost:3200` and select the auto-deployed `TugGame`. To exercise contract-backed wager → hold → bank, snap, and five-hold auto-bank flows:
 
 ```sh
-npm run build          # from SDK root: tests + static site
-# or
-npm --prefix examples/tug-public run build
+npm run simulate:tug
 ```
 
-Static output: `examples/tug-public/dist/` (deploy to any static host).
-
-Confirm the jam widget is present in the built HTML:
+## Development and verification
 
 ```sh
-findstr jam.chain.wtf examples\tug-public\dist\index.html
+npm --prefix examples/tug-public run dev
+npm run test:sdk
+npm run test:tug
+npm --prefix examples/tug-public run check-types
+npm --prefix simulator run check-types
+npm run simulate:tug
+npm run build
 ```
 
-## Contract
+Production output is `examples/tug-public/dist/`.
 
-`simulator/contracts/TugGame.sol` implements `ICasinoGameV2`:
+## Standalone mode
 
-1. `onSessionStart` → reserve `wager * mult(5) - wager`, wait for player
-2. `onPlayerAction(HOLD)` → request VRF
-3. `onRandomness` → survive (4/5) or snap; hold 5 auto-banks
-4. `onPlayerAction(CASHOUT)` → pay `wager * mult(N)`
+Opening the root URL directly waits briefly for the Chain bridge, then starts a clearly labelled local demo if the page is not embedded. `?demo=1` forces demo mode for QA. Embedded pages never fall back to fake outcomes: the real Chain/simulator bridge must connect.
 
-## Submission fields
+The demo is for playability only and is visibly labelled “Demo”; it does not represent an on-chain payout.
 
-See [`SUBMISSION.md`](./SUBMISSION.md).
+## Chain Jam widget
+
+`index.html` contains the exact required integration:
+
+```html
+<script async src="https://jam.chain.wtf/widget.js"></script>
+```
+
+The original script and rendered widget remain interactive. The rendered container is docked outside normal layout flow with reserved stage space and mobile safe-area clearance.
+
+## Technology
+
+React 19, TypeScript, Vite, Solidity `0.8.30`, `viem`, `@chain/casino-sdk`, Canvas rope physics, CSS transitions, and original Web Audio synthesis. No animation or audio library is required.
+
+## Known limitations
+
+- Standalone outcomes and balances are intentionally local demo data; only embedded Chain/simulator sessions settle through the contract.
+- Web Share availability depends on the browser; unsupported browsers use the clipboard fallback.
+- Audio starts only after user interaction and can be muted persistently.

@@ -1,7 +1,8 @@
 # Tug — Chain (chain.wtf) Casino Jam entry
 
-Complete jam entry built on the official `@chain/casino-sdk` (downloaded from
-https://sdk.chain.wtf/sdk/casino-sdk.zip).
+Complete jam entry built on the official `@chain/casino-sdk`. Tug is a five-hold
+risk-selection wagering game: the player re-selects Ease, Steady, or Haul before
+every contract-settled VRF hold, then banks or pulls again.
 
 ## Quick start
 
@@ -22,7 +23,8 @@ cd sdk/casino-sdk
 npm run build
 ```
 
-Runs RTP/state-machine unit tests and produces `examples/tug-public/dist/` for static hosting.
+Runs SDK, RTP, state-machine, payout, randomness, simulation, and standalone-host
+tests, then produces `examples/tug-public/dist/` for static hosting.
 
 **Live demo:** https://tug-static.vercel.app  
 **Source:** https://github.com/Fraeiy/tug  

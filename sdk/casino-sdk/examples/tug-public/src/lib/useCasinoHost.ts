@@ -8,8 +8,6 @@ import {
 } from '@chain/casino-sdk/guest';
 import { createDemoHost, isEmbedded, wantsDemoMode } from './demoHost';
 
-const HOST_TIMEOUT_MS = 1800;
-
 /**
  * Guest bridge. Prefers the real host; falls back to gated demo mode so the
  * page stays playable standalone (jam eligibility).
@@ -39,7 +37,9 @@ export function useCasinoHost(): {
       });
     };
 
-    if (wantsDemoMode()) {
+    // A top-level page has no host. Connecting Penpal to window.parent
+    // (itself) can self-handshake and leave the snapshot permanently null.
+    if (wantsDemoMode() || !isEmbedded()) {
       startDemo();
       return () => {
         mounted = false;
@@ -56,26 +56,19 @@ export function useCasinoHost(): {
 
     const connection = connectGameToHost(guestMethods);
 
-    const timeout = window.setTimeout(() => {
-      // Standalone tab with no host — enable demo so the jam gate passes.
-      if (!settled && !isEmbedded()) startDemo();
-    }, HOST_TIMEOUT_MS);
-
     void connection.promise
       .then(parent => {
         if (!mounted || settled) return;
         settled = true;
-        window.clearTimeout(timeout);
         setDemoMode(false);
         setHostApi(parent);
       })
       .catch(() => {
-        if (!settled && !isEmbedded()) startDemo();
+        // Embedded games never substitute demo outcomes for a failed bridge.
       });
 
     return () => {
       mounted = false;
-      window.clearTimeout(timeout);
       demoUnsub?.();
       connection.destroy();
     };

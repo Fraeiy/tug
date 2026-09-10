@@ -8,7 +8,7 @@
  * Enable with `?demo=1` or automatically after the host handshake times out
  * when not embedded.
  */
-import type { HostApiV1, HostSnapshotV1, HexString } from '@chain/casino-sdk';
+import type { HostApiV1, HostSnapshotV1, HexString } from "@chain/casino-sdk";
 import {
   EMPTY_HEX,
   MAX_HOLDS,
@@ -23,15 +23,16 @@ import {
   payoutFromCum,
   survivedFromRandomness,
   type TugState,
-} from './tug';
-import { encodeAbiParameters } from 'viem';
+} from "./tug";
+import { encodeAbiParameters } from "viem";
 
-export const DEMO_FLAG = 'demo';
+export const DEMO_FLAG = "demo";
 
 export function wantsDemoMode(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === "undefined") return false;
   const params = new URLSearchParams(window.location.search);
-  if (params.get(DEMO_FLAG) === '1' || params.get(DEMO_FLAG) === 'true') return true;
+  if (params.get(DEMO_FLAG) === "1" || params.get(DEMO_FLAG) === "true")
+    return true;
   return false;
 }
 
@@ -46,18 +47,18 @@ export function isEmbedded(): boolean {
 function encodeState(state: TugState): HexString {
   const randomness =
     state.lastRandomness === EMPTY_HEX
-      ? (('0x' + '00'.repeat(32)) as HexString)
+      ? (("0x" + "00".repeat(32)) as HexString)
       : state.lastRandomness;
   return encodeAbiParameters(
     [
-      { type: 'uint8' },
-      { type: 'bool' },
-      { type: 'bool' },
-      { type: 'bool' },
-      { type: 'bytes32' },
-      { type: 'uint256' },
-      { type: 'uint256' },
-      { type: 'uint8' },
+      { type: "uint8" },
+      { type: "bool" },
+      { type: "bool" },
+      { type: "bool" },
+      { type: "bytes32" },
+      { type: "uint256" },
+      { type: "uint256" },
+      { type: "uint8" },
     ],
     [
       state.holdsSurvived,
@@ -75,8 +76,8 @@ function encodeState(state: TugState): HexString {
 function randomWord(): bigint {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  let hex = '0x';
-  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  let hex = "0x";
+  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
   return BigInt(hex);
 }
 
@@ -88,37 +89,38 @@ export type DemoControllers = {
 
 export function createDemoHost(): DemoControllers {
   let sessionCounter = 0;
+  const revealedSessions = new Set<string>();
   const listeners = new Set<(s: HostSnapshotV1) => void>();
 
   const snapshot: HostSnapshotV1 = {
     apiVersion: 1,
     integration: {
       chainId: 31337,
-      slug: 'tug',
-      gameAddress: '0x0000000000000000000000000000000000000a01',
+      slug: "tug",
+      gameAddress: "0x0000000000000000000000000000000000000a01",
       manifest: {
         schemaVersion: 1,
-        gameId: 'TugGame',
+        gameId: "TugGame",
         apiVersion: 1,
-        defaultLocale: 'en',
-        locales: { en: { name: 'Tug', description: 'Hold or bank.' } },
+        defaultLocale: "en",
+        locales: { en: { name: "Tug", description: "Hold or bank." } },
       },
     },
     wallet: {
-      address: '0x000000000000000000000000000000000000dE01',
-      smartVaultAddress: '0x000000000000000000000000000000000000dE01',
-      status: 'ready',
+      address: "0x000000000000000000000000000000000000dE01",
+      smartVaultAddress: "0x000000000000000000000000000000000000dE01",
+      status: "ready",
     },
-    token: { symbol: 'chUSD', decimals: 18 },
+    token: { symbol: "chUSD", decimals: 18 },
     balances: { smartVaultBalance: (1_000_000n * 10n ** 18n).toString() },
     casino: {
       availableLiquidity: (10_000_000n * 10n ** 18n).toString(),
       maxBetRiskBps: 100,
       maxAllowedReservedProfit: (100_000n * 10n ** 18n).toString(),
-      maxBetAmount: '0',
+      maxBetAmount: "0",
     },
     sessions: { items: [] },
-    ui: { locale: 'en', theme: 'dark', viewport: { availableHeight: 800 } },
+    ui: { locale: "en", theme: "dark", viewport: { availableHeight: 800 } },
   };
 
   const push = () => {
@@ -127,7 +129,7 @@ export function createDemoHost(): DemoControllers {
   };
 
   const findSession = (sessionId: string) =>
-    snapshot.sessions.items.find(s => s.sessionId === sessionId);
+    snapshot.sessions.items.find((s) => s.sessionId === sessionId);
 
   const hostApi: HostApiV1 = {
     async reportContentSize() {},
@@ -137,7 +139,7 @@ export function createDemoHost(): DemoControllers {
       const sessionKey = `31337:${sessionId}`;
       const state = initialState();
       const wagerBi = BigInt(wager);
-      const bal = BigInt(snapshot.balances.smartVaultBalance ?? '0');
+      const bal = BigInt(snapshot.balances.smartVaultBalance ?? "0");
       snapshot.balances.smartVaultBalance = (bal - wagerBi).toString();
 
       snapshot.sessions.items = [
@@ -146,7 +148,7 @@ export function createDemoHost(): DemoControllers {
           sessionKey,
           gameAddress: snapshot.integration.gameAddress,
           phase: PHASE_WAITING_PLAYER_ACTION,
-          phaseName: 'WAITING_PLAYER_ACTION',
+          phaseName: "WAITING_PLAYER_ACTION",
           wager,
           payout: undefined,
           isSettled: false,
@@ -157,45 +159,52 @@ export function createDemoHost(): DemoControllers {
             gameState: encodeState(state),
           },
         },
-        ...snapshot.sessions.items.filter(s => !s.isSettled).slice(0, 8),
+        ...snapshot.sessions.items.filter((s) => !s.isSettled).slice(0, 8),
       ];
       push();
-      return { sessionKey, transactionHash: ('0x' + 'ab'.repeat(32)) as HexString };
+      return {
+        sessionKey,
+        transactionHash: ("0x" + "ab".repeat(32)) as HexString,
+      };
     },
     async submitAction({ sessionId, actionData }) {
       const row = findSession(sessionId);
-      if (!row || row.isSettled) throw new Error('No active session');
-      const state = decodeGameState(row.raw.gameState as HexString) ?? initialState();
-      const wager = BigInt(row.wager ?? '0');
+      if (!row || row.isSettled) throw new Error("No active session");
+      const state =
+        decodeGameState(row.raw.gameState as HexString) ?? initialState();
+      const wager = BigInt(row.wager ?? "0");
       const hold = decodeHoldAction(actionData as HexString);
-      const isCash = actionData.toLowerCase() === encodeCashoutAction().toLowerCase();
+      const isCash =
+        actionData.toLowerCase() === encodeCashoutAction().toLowerCase();
 
       if (hold) {
-        if (state.holdsSurvived >= MAX_HOLDS) throw new Error('Max holds');
+        if (state.pendingHold || state.snapped || state.banked)
+          throw new Error("Action already resolving");
+        if (state.holdsSurvived >= MAX_HOLDS) throw new Error("Max holds");
         state.pendingHold = true;
         state.pendingIntensity = hold.intensity;
         row.phase = PHASE_WAITING_RANDOMNESS;
-        row.phaseName = 'WAITING_RANDOMNESS';
+        row.phaseName = "WAITING_RANDOMNESS";
         row.raw.gameState = encodeState(state);
         push();
 
-        await new Promise(r => setTimeout(r, 450));
+        await new Promise((r) => setTimeout(r, 450));
         const word = randomWord();
-        const hex = `0x${word.toString(16).padStart(64, '0')}` as HexString;
+        const hex = `0x${word.toString(16).padStart(64, "0")}` as HexString;
         state.pendingHold = false;
         state.lastRandomness = hex;
 
         if (!survivedFromRandomness(word, hold.intensity)) {
           state.snapped = true;
           row.phase = PHASE_SETTLED;
-          row.phaseName = 'SETTLED';
-          row.payout = '0';
+          row.phaseName = "SETTLED";
+          row.payout = "0";
           row.isSettled = true;
           row.settledAt = Date.now();
           row.raw.gameState = encodeState(state);
           row.raw.randomness = hex;
           push();
-          return { transactionHash: ('0x' + 'cd'.repeat(32)) as HexString };
+          return { transactionHash: ("0x" + "cd".repeat(32)) as HexString };
         }
 
         const cum = applySurvive(state.cumNum, state.cumDen, hold.intensity);
@@ -206,49 +215,53 @@ export function createDemoHost(): DemoControllers {
           state.banked = true;
           const payout = payoutFromCum(wager, state.cumNum, state.cumDen);
           row.phase = PHASE_SETTLED;
-          row.phaseName = 'SETTLED';
+          row.phaseName = "SETTLED";
           row.payout = payout.toString();
           row.isSettled = true;
           row.settledAt = Date.now();
           row.raw.gameState = encodeState(state);
           row.raw.randomness = hex;
           push();
-          return { transactionHash: ('0x' + 'ef'.repeat(32)) as HexString };
+          return { transactionHash: ("0x" + "ef".repeat(32)) as HexString };
         }
 
         row.phase = PHASE_WAITING_PLAYER_ACTION;
-        row.phaseName = 'WAITING_PLAYER_ACTION';
+        row.phaseName = "WAITING_PLAYER_ACTION";
         row.raw.gameState = encodeState(state);
         row.raw.randomness = hex;
         push();
-        return { transactionHash: ('0x' + '11'.repeat(32)) as HexString };
+        return { transactionHash: ("0x" + "11".repeat(32)) as HexString };
       }
 
       if (isCash) {
-        if (state.holdsSurvived < 1) throw new Error('Nothing to bank');
+        if (state.pendingHold || state.snapped || state.banked)
+          throw new Error("Cannot bank now");
+        if (state.holdsSurvived < 1) throw new Error("Nothing to bank");
         state.banked = true;
         const payout = payoutFromCum(wager, state.cumNum, state.cumDen);
         row.phase = PHASE_SETTLED;
-        row.phaseName = 'SETTLED';
+        row.phaseName = "SETTLED";
         row.payout = payout.toString();
         row.isSettled = true;
         row.settledAt = Date.now();
         row.raw.gameState = encodeState(state);
         push();
-        return { transactionHash: ('0x' + '22'.repeat(32)) as HexString };
+        return { transactionHash: ("0x" + "22".repeat(32)) as HexString };
       }
 
-      throw new Error('Unknown action');
+      throw new Error("Unknown action");
     },
     async cancelStuckRandomness() {
-      return { transactionHash: ('0x' + '00'.repeat(32)) as HexString };
+      return { transactionHash: ("0x" + "00".repeat(32)) as HexString };
     },
     async revealOutcome({ sessionId }) {
+      if (revealedSessions.has(sessionId)) return;
       const row = findSession(sessionId);
       if (!row?.payout) return;
+      revealedSessions.add(sessionId);
       const payout = BigInt(row.payout);
       if (payout > 0n) {
-        const bal = BigInt(snapshot.balances.smartVaultBalance ?? '0');
+        const bal = BigInt(snapshot.balances.smartVaultBalance ?? "0");
         snapshot.balances.smartVaultBalance = (bal + payout).toString();
         push();
       }
@@ -258,7 +271,7 @@ export function createDemoHost(): DemoControllers {
   return {
     hostApi,
     getSnapshot: () => structuredClone(snapshot),
-    subscribe: fn => {
+    subscribe: (fn) => {
       listeners.add(fn);
       fn(structuredClone(snapshot));
       return () => listeners.delete(fn);

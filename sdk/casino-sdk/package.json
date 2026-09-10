@@ -19,9 +19,10 @@
     "start": "concurrently -k -n local-node,simulator,tug -c yellow,cyan,magenta \"npm --prefix simulator run local-node\" \"npm --prefix simulator run dev\" \"npm --prefix examples/tug-public run dev\"",
     "start:coinflip": "concurrently -k -n local-node,simulator,coinflip -c yellow,cyan,magenta \"npm --prefix simulator run local-node\" \"npm --prefix simulator run dev\" \"npm --prefix examples/coinflip-public run dev\"",
     "test:tug": "npm --prefix examples/tug-public test",
+    "test:sdk": "vitest run src/bet-limits.test.ts",
     "simulate:tug": "npm --prefix examples/tug-public run simulate",
     "build:tug": "npm --prefix examples/tug-public run build",
-    "build": "npm run test:tug && npm run build:tug"
+    "build": "npm run test:sdk && npm run test:tug && npm run build:tug"
   },
   "dependencies": {
     "penpal": "^7.0.4",
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@types/node": "24.12.4",
     "concurrently": "^9.1.2",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "^3.2.4"
   }
 }

@@ -25,6 +25,7 @@ contract TugGame is ICasinoGameV2 {
 
   uint8 private constant ACTION_HOLD = 0;
   uint8 private constant ACTION_CASHOUT = 1;
+  uint8 private constant ROLL_REJECT = 240; // 12 complete 0..19 partitions
 
   error TugGame__InvalidAction();
   error TugGame__NothingToBank();
@@ -256,11 +257,28 @@ contract TugGame is ICasinoGameV2 {
   }
 
   function _survived(bytes32 randomness, uint8 intensity) private pure returns (bool) {
-    uint256 roll = uint256(randomness);
-    if (intensity == INTENSITY_EASE) return roll % 10 < 9;
-    if (intensity == INTENSITY_STEADY) return roll % 5 < 4;
-    if (intensity == INTENSITY_HAUL) return roll % 20 < 13;
+    uint8 roll = _roll20(randomness);
+    if (intensity == INTENSITY_EASE) return roll < 18;
+    if (intensity == INTENSITY_STEADY) return roll < 16;
+    if (intensity == INTENSITY_HAUL) return roll < 13;
     revert TugGame__InvalidIntensity();
+  }
+
+  /// @dev SDK-documented rejection sampling: every accepted byte contributes
+  ///      equally to each of the 20 outcomes. Exhausted seeds expand by hash.
+  function _roll20(bytes32 randomness) private pure returns (uint8) {
+    bytes32 seed = randomness;
+    uint256 index = 0;
+    while (true) {
+      if (index == 32) {
+        seed = keccak256(abi.encodePacked(seed));
+        index = 0;
+      }
+      uint8 sample = uint8(seed[index]);
+      index += 1;
+      if (sample < ROLL_REJECT) return sample % 20;
+    }
+    revert TugGame__InvalidAction();
   }
 
   function _decodeAction(

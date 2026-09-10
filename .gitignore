@@ -14,3 +14,5 @@ sdk/casino-sdk/**/local-node/deployed.json
 *.tsbuildinfo
 .turbo/
 coverage/
+simulator-tug.png
+sdk/casino-sdk/examples/tug-public/visual-review/
