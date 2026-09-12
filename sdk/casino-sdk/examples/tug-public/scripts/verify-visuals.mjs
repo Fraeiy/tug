@@ -137,10 +137,6 @@ try {
         break;
       await wait(100);
     }
-    if (await evaluate("document.querySelector('dialog')?.open")) {
-      await tap("dialog .primary");
-      await wait(100);
-    }
     await evaluate("document.fonts.ready");
     await wait(450); // Let the presentation-only entrance settle for layout checks.
     const prefix = w + "x" + h;

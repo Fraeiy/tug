@@ -42,26 +42,10 @@ const assert = async (expression, name) => {
 };
 const ready = async () => {
   for (let i = 0; i < 100; i++) {
-    if (await evaluate("!!document.querySelector('.help-trigger')")) return;
+    if (await evaluate("!!document.querySelector('.decision .primary')")) return;
     await wait(100);
   }
   throw new Error("Page not ready");
-};
-const key = async (name, modifiers = 0) => {
-  await send("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    key: name,
-    code: name,
-    windowsVirtualKeyCode: name === "Tab" ? 9 : 27,
-    modifiers,
-  });
-  await send("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    key: name,
-    code: name,
-    windowsVirtualKeyCode: name === "Tab" ? 9 : 27,
-    modifiers,
-  });
 };
 const click = async (selector) => {
   const { x, y } = await evaluate(
@@ -105,66 +89,21 @@ try {
       deviceScaleFactor: 1,
       mobile: width < 760,
     });
-    await evaluate("localStorage.removeItem('tug.how-to-play.dismissed.v1')");
     await send("Page.reload");
     await wait(500);
     await ready();
     await wait(500);
     await assert(
-      "document.querySelector('dialog').open",
-      "first visit " + width,
+      "!document.querySelector('dialog')",
+      "no onboarding dialog " + width,
     );
     await assert(
-      "document.querySelector('.help-sequence').textContent.replace(/\\s+/g,' ').trim()==='Pick a grip→Survive the tug→Bank or climb again'",
-      "concise visual sequence",
+      "(()=>{const t=document.querySelector('.rule').textContent;return t.includes('Pick a grip')&&t.includes('Bank')&&t.includes('Snap')&&t.includes('loses the wager')})()",
+      "rules visible at a glance",
     );
     await assert(
-      "document.querySelector('dialog .primary').textContent.trim()==='Start playing'",
-      "primary onboarding action",
-    );
-    await assert(
-      "document.activeElement.id==='how-to-play-title'",
-      "initial title focus",
-    );
-    await assert(
-      "(()=>{const r=document.querySelector('dialog').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight})()",
-      "dialog fits",
-    );
-    await shot("onboarding-" + width);
-    await evaluate("document.querySelector('.help-close').focus()");
-    await key("Tab", 8);
-    await assert(
-      "document.activeElement.matches('dialog .primary')",
-      "backward focus trap",
-    );
-    await key("Tab");
-    await assert(
-      "document.activeElement.matches('.help-close')",
-      "forward focus trap",
-    );
-    await key("Escape");
-    await assert(
-      "!document.querySelector('dialog').open && localStorage.getItem('tug.how-to-play.dismissed.v1')==='1'",
-      "Escape persists dismissal",
-    );
-    await assert(
-      "document.activeElement.matches('.help-trigger')",
-      "focus restored",
-    );
-    await click(".help-trigger");
-    await assert("document.querySelector('dialog').open", "manual reopen");
-    await click("dialog .primary");
-    await assert("!document.querySelector('dialog').open", "Start playing dismisses");
-    await click(".help-trigger");
-    await click(".help-close");
-    await assert("!document.querySelector('dialog').open", "Close dismisses");
-    await send("Page.reload");
-    await wait(500);
-    await ready();
-    await wait(500);
-    await assert(
-      "!document.querySelector('dialog').open",
-      "dismissal survives reload",
+      "document.querySelector('.decision .primary').textContent.trim()==='Start round'",
+      "clear start action",
     );
     await assert(
       "document.querySelector('.callout').textContent==='Set your wager.'",
@@ -179,7 +118,7 @@ try {
       "document.documentElement.scrollWidth<=innerWidth",
       "no horizontal overflow",
     );
-    await shot("onboarding-dismissed-" + width);
+    await shot("game-entry-" + width);
     await click(".decision .primary");
     await wait(300);
     await assert(
@@ -187,8 +126,8 @@ try {
       "active-round prompt",
     );
     await assert(
-      "!!document.querySelector('.intensity-ease')&&!document.querySelector('dialog').open&&document.querySelector('.help-trigger').disabled",
-      "onboarding unavailable during active round",
+      "['ease','steady','haul'].every(g=>document.querySelector('.intensity-'+g))&&document.querySelector('.bank-full').disabled",
+      "grip choices visible and bank locked until survival",
     );
   }
   if (errors.length) throw new Error(errors.join("\n"));

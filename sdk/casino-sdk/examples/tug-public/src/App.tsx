@@ -45,7 +45,6 @@ import {
   shareResultText,
 } from "./lib/session";
 import { RopeStage, type RopeVisual } from "./components/RopeStage";
-import { HowToPlay } from "./components/HowToPlay";
 
 type RoundStatus =
   | "idle"
@@ -492,7 +491,6 @@ export function App() {
           </span>
           <div className="brand-text">
             <p className="eyebrow">Hold or bank</p>
-            <HowToPlay available={!inRound} />
             <h1>Tug</h1>
           </div>
         </div>
