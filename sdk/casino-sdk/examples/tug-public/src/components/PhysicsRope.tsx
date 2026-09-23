@@ -80,8 +80,8 @@ export function PhysicsRope({
     let dpr = 1;
     let bounce = 0; // brief drop bounce when a new hold lands
 
-    const topPin = () => ({ x: w * 0.5, y: h * 0.07 });
-    const baseBottomY = () => h * 0.72;
+    const topPin = () => ({ x: w * 0.5, y: h * 0.17 });
+    const baseBottomY = () => h * 0.57;
 
     const gripBoost = () => {
       const g = intensityRef.current;
@@ -230,7 +230,9 @@ export function PhysicsRope({
 
       if (!snapped) {
         const bottom = points[points.length - 1];
-        const targetY = baseBottomY() + h * pull;
+        // Reserve space for the entire weight, including in short iframes.
+        const weightScale = Math.min(w / 310, h / 290, 2.05);
+        const targetY = Math.min(baseBottomY() + h * pull, h - 24 - 88 * weightScale);
         const sway =
           Math.sin(time * (v === "fraying" ? 18 : 2.8)) * swayIntensity();
         bottom.x += (top.x + sway - bottom.x) * 0.42;
@@ -415,41 +417,65 @@ export function PhysicsRope({
         visualRef.current === "fraying" || visualRef.current === "tension";
       const kg =
         n > 0 ? baseKg + (showGrip ? gripKg : 0) : showGrip ? gripKg : 0;
-      const scale =
-        1 + Math.max(0, n - 1) * 0.12 + (showGrip ? gripBoost() * 0.12 : 0);
+      const scale = Math.min(w / 310, h / 290, 2.05);
       const cx = bot.x;
       const cy = bot.y + 14;
 
-      // Iron weight body
+      // A substantial machined weight, attached to the live rope endpoint.
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(scale, scale);
       ctx.beginPath();
-      ctx.moveTo(-16, -4);
-      ctx.lineTo(16, -4);
-      ctx.lineTo(13, 16);
-      ctx.lineTo(-13, 16);
+      ctx.moveTo(-37, 8);
+      ctx.lineTo(37, 8);
+      ctx.lineTo(58, 76);
+      ctx.lineTo(45, 88);
+      ctx.lineTo(-45, 88);
+      ctx.lineTo(-58, 76);
       ctx.closePath();
-      ctx.fillStyle = "#1a1410";
+      const metal = ctx.createLinearGradient(-58, 0, 58, 70);
+      metal.addColorStop(0, "#909793");
+      metal.addColorStop(0.12, "#42494a");
+      metal.addColorStop(0.5, "#202729");
+      metal.addColorStop(0.86, "#101617");
+      metal.addColorStop(1, "#6a7471");
+      ctx.fillStyle = metal;
       ctx.fill();
       ctx.lineWidth = 2;
-      ctx.strokeStyle = colors.ring;
+      ctx.strokeStyle = "#87918a";
       ctx.stroke();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = "#b6a052";
+      ctx.fillRect(-60, 51, 120, 9);
+      for (let j = 0; j < 90; j++) {
+        const x = ((j * 43) % 116) - 58;
+        const y = (j * 29) % 86;
+        ctx.strokeStyle = j % 2 ? "#e4e5ce20" : "#00000050";
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 3 + (j % 9), y - 1);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = "#070c0d";
+      ctx.fillRect(-38, 72, 76, 5);
       // Hook ring
       ctx.beginPath();
-      ctx.arc(0, -10, 7, 0, Math.PI * 2);
-      ctx.strokeStyle = colors.ring;
-      ctx.lineWidth = 2.5;
+      ctx.ellipse(0, 0, 13, 17, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = "#a2aaa0";
+      ctx.lineWidth = 5;
       ctx.stroke();
       ctx.restore();
 
       // kg tag
-      const label = n > 0 ? `${kg}kg` : "READY";
+      const label = n > 0 ? `LOAD ${kg}` : "READY";
       ctx.font = '700 11px "Inter", system-ui, sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const tw = ctx.measureText(label).width;
-      const tagY = cy + 22 * scale;
+      const tagY = cy + 36 * scale;
       const padX = 8;
       const tagW = tw + padX * 2;
       const tagH = 18;
@@ -468,7 +494,7 @@ export function PhysicsRope({
       ctx.clearRect(0, 0, w, h);
       const colors = palette();
       const n = holdsRef.current;
-      const tautWidth = (snapped ? 8.5 : 12 - Math.min(3.5, n * 0.45)) * 1.17;
+      const tautWidth = Math.min(w / 16, h / 12, 32) - Math.min(4, n * 0.6);
 
       if (snapped && snapAt > 0) {
         drawHalf(0, snapAt, colors, tautWidth);
@@ -479,12 +505,39 @@ export function PhysicsRope({
 
       // Top drum
       const top = points[0];
-      ctx.fillStyle = "#2c241c";
-      ctx.strokeStyle = "#5a4c3c";
+      const drumWidth = Math.min(w * 0.52, 290);
+      const drumHeight = Math.min(h * 0.12, 58);
+      const drumMetal = ctx.createLinearGradient(
+        0,
+        top.y - drumHeight,
+        0,
+        top.y,
+      );
+      drumMetal.addColorStop(0, "#6f7973");
+      drumMetal.addColorStop(0.35, "#252f30");
+      drumMetal.addColorStop(0.6, "#515c56");
+      drumMetal.addColorStop(1, "#0a1012");
+      ctx.fillStyle = drumMetal;
+      ctx.strokeStyle = "#88907d";
       ctx.lineWidth = 1.5;
-      roundRectPath(ctx, top.x - 34, top.y - 14, 68, 22, 6);
+      roundRectPath(
+        ctx,
+        top.x - drumWidth / 2,
+        top.y - drumHeight,
+        drumWidth,
+        drumHeight,
+        6,
+      );
       ctx.fill();
       ctx.stroke();
+      for (let j = -6; j <= 6; j++) {
+        ctx.beginPath();
+        ctx.moveTo(top.x + (j * drumWidth) / 20 - 5, top.y - drumHeight + 5);
+        ctx.lineTo(top.x + (j * drumWidth) / 20 + 5, top.y - 5);
+        ctx.strokeStyle = j % 2 ? "#a3997b" : "#635d4d";
+        ctx.lineWidth = drumWidth / 26;
+        ctx.stroke();
+      }
       ctx.beginPath();
       ctx.fillStyle = "#e2b56a";
       ctx.arc(top.x, top.y - 3, 3.5, 0, Math.PI * 2);
@@ -526,9 +579,17 @@ export function PhysicsRope({
       }
     };
 
-    const loop = () => {
+    let lastFrame = 0;
+    let accumulator = 0;
+    const loop = (now: number) => {
       if (!running) return;
-      step();
+      // Keep the simulation stable across 60 Hz and high refresh displays.
+      accumulator += lastFrame ? Math.min(now - lastFrame, 64) : 16;
+      lastFrame = now;
+      while (accumulator >= 16) {
+        step();
+        accumulator -= 16;
+      }
       draw();
       raf = window.requestAnimationFrame(loop);
     };

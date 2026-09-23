@@ -141,9 +141,8 @@ export function playTension(intensity: Intensity): void {
   stopAudio();
   const strength = [0.038, 0.052, 0.07][intensity];
   const start = [96, 108, 124][intensity];
-  noiseBurst(0.3, strength, 340 + intensity * 130);
-  tone(start, 0.38, "triangle", strength, start + 42 + intensity * 26);
-  later(() => noiseBurst(0.22, strength * 0.8, 450 + intensity * 180), 230);
+  tone(start, 0.18, "triangle", strength * 0.6, start + 42 + intensity * 26);
+  later(() => tone(start * 1.6, 0.09, "triangle", strength * 0.35, start), 110);
 }
 
 export function playHoldSurvived(holds: number): void {
@@ -156,12 +155,11 @@ export function playHoldSurvived(holds: number): void {
 
 export function playSnap(): void {
   stopAudio();
-  noiseBurst(0.18, 0.14, 1600);
-  tone(160, 0.12, "sawtooth", 0.11, 55);
+  noiseBurst(0.055, 0.09, 1600);
+  tone(160, 0.09, "triangle", 0.07, 55);
   later(() => {
-    noiseBurst(0.35, 0.085, 220);
-    tone(70, 0.5, "triangle", 0.095, 35);
-  }, 40);
+    tone(70, 0.18, "triangle", 0.065, 35);
+  }, 100);
 }
 
 export function playBank(finalHold = false): void {

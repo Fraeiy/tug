@@ -74,6 +74,7 @@ export function App() {
     null,
   );
   const [muted, setMuted] = useState(readMutedPreference);
+  const helpRef = useRef<HTMLDialogElement>(null);
   const [stats, setStats] = useState(loadSessionStats);
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied">(
     "idle",
@@ -201,7 +202,9 @@ export function App() {
   useEffect(() => {
     if (status !== "banked" || !resolvedSessionId || !hostApi) return;
     void hostApi.revealOutcome({ sessionId: resolvedSessionId }).catch(() => {
-      setError("Payout confirmation is delayed. Your settled round remains safe.");
+      setError(
+        "Payout confirmation is delayed. Your settled round remains safe.",
+      );
     });
   }, [status, resolvedSessionId, hostApi]);
 
@@ -490,11 +493,19 @@ export function App() {
             </svg>
           </span>
           <div className="brand-text">
-            <p className="eyebrow">Hold or bank</p>
+            <p className="eyebrow">Breakpoint / Rope testing division</p>
             <h1>Tug</h1>
           </div>
         </div>
         <div className="topbar-meta" role="status" aria-live="polite">
+          <button
+            type="button"
+            className="help-toggle"
+            onClick={() => helpRef.current?.showModal()}
+            aria-label="How to play"
+          >
+            ?
+          </button>
           {demoMode && <span className="pill demo demo-badge">Demo</span>}
           <button
             type="button"
@@ -529,7 +540,10 @@ export function App() {
             className="console-card decision"
             aria-busy={status === "resolving" || status === "snapping"}
           >
-            <div className="meter" aria-hidden>
+            <div
+              className="meter"
+              aria-label={`${holds} of ${MAX_HOLDS} holds survived`}
+            >
               <div
                 className="meter-fill"
                 style={{ width: `${(holds / MAX_HOLDS) * 100}%` }}
@@ -538,6 +552,13 @@ export function App() {
                 {holds}/{MAX_HOLDS} holds
               </span>
               <span className="mobile-rtp">95% RTP</span>
+            </div>
+            <div className="hold-lamps" aria-hidden="true">
+              {Array.from({ length: MAX_HOLDS }, (_, i) => (
+                <span key={i} className={i < holds ? "lit" : ""}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+              ))}
             </div>
 
             {(status === "idle" || status === "opening") && (
@@ -590,7 +611,7 @@ export function App() {
               <>
                 <div className="choice-copy">
                   <p>
-                    Current · <strong>{currentMult}</strong>
+                    Choose your next grip · <strong>{currentMult}</strong>
                     {potential > 0n && (
                       <span className="muted">
                         {" "}
@@ -603,7 +624,7 @@ export function App() {
                   <p className="risk">
                     {status === "resolving"
                       ? "Rope under load…"
-                      : "Choose how hard to pull — risk resets every hold."}
+                      : "Higher risk. Higher potential payout."}
                   </p>
                 </div>
 
@@ -751,10 +772,10 @@ export function App() {
 
           <div className="console-card ladder">
             <div className="ladder-head">
-              <h2>Grips</h2>
+              <h2>Pull 5 banks automatically</h2>
               <span>95% RTP</span>
             </div>
-            <ol>
+            <ol hidden>
               {INTENSITIES.map((row) => (
                 <li
                   key={row.id}
@@ -787,6 +808,46 @@ export function App() {
           </div>
         </aside>
       </main>
+      <dialog
+        ref={helpRef}
+        aria-labelledby="rules-title"
+        className="help-dialog"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) helpRef.current?.close();
+        }}
+      >
+        <button
+          className="dialog-close"
+          onClick={() => helpRef.current?.close()}
+          aria-label="Close rules"
+        >
+          ×
+        </button>
+        <p className="eyebrow">Operator briefing</p>
+        <h2 id="rules-title">Know when to let go.</h2>
+        <ol>
+          <li>Set a wager and start the machine.</li>
+          <li>
+            Choose a grip each pull: Ease has 10% snap risk, Steady 20%, Haul
+            35%.
+          </li>
+          <li>
+            Survive, then bank your payout or pull again. A snap loses your
+            wager. The fifth successful pull banks automatically.
+          </li>
+        </ol>
+        <p>
+          95% theoretical RTP. Each grip's next payout is shown before you
+          choose. Physical strain is visual feedback, not a prediction of the
+          random outcome.
+        </p>
+        <button
+          className="btn primary"
+          onClick={() => helpRef.current?.close()}
+        >
+          Understood
+        </button>
+      </dialog>
     </div>
   );
 }

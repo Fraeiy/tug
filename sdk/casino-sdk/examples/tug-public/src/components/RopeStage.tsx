@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { INTENSITIES, MAX_HOLDS, type Intensity } from "../lib/tug";
+import { MAX_HOLDS, type Intensity } from "../lib/tug";
 import { PhysicsRope } from "./PhysicsRope";
 
 export type RopeVisual = "idle" | "tension" | "fraying" | "snap" | "banked";
@@ -60,6 +60,10 @@ export function RopeStage({
     >
       <div className="stage-grain" aria-hidden />
       <div className="stage-vignette" aria-hidden />
+      <div className="machine-label" aria-hidden="true">
+        <span>LOAD TEST / 05</span>
+        <strong>THE BREAKPOINT</strong>
+      </div>
 
       <header className="stage-headline">
         <p className="rule">
@@ -72,22 +76,6 @@ export function RopeStage({
         <div className="winch-beam" aria-hidden>
           <span className="bolt" />
           <span className="bolt right" />
-        </div>
-
-        <div className="track" aria-hidden>
-          <div className="track-rail" />
-          {INTENSITIES.map((row, i) => (
-            <div
-              key={row.id}
-              className={`rung${intensity === row.id && pending ? " now" : ""}${holds > i ? " lit" : ""}`}
-              style={{ top: `${18 + (i / (MAX_HOLDS - 1)) * 50}%` }}
-            >
-              <i />
-              <em>
-                {row.label} {100 - Number(row.pDisplay.replace("%", ""))}% snap
-              </em>
-            </div>
-          ))}
         </div>
 
         <div className="rope-viewport">
